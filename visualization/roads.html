@@ -5,6 +5,7 @@
 	<meta charset="utf-8">
 	<link rel="stylesheet"
 		href="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.4.3/css/ol.css" type="text/css">
+	<link rel="stylesheet" href="css/menu.css" type="text/css">
 	<style>
 		.map {
 			position: absolute;
@@ -79,9 +80,13 @@
 			right: 8px;
 		}
 	</style>
+	<script type="text/javascript" src="js/InteractiveVisualization.js"></script>
+	<script type="text/javascript" src="js/Menu.js"></script>
+	<script type="text/javascript" src="js/FeatureStyle.js"></script>
+	<script type="text/javascript" src="js/OBS.js"></script>
 	<script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.4.3/build/ol.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-	<script src="OBS.js"></script>
+
 	<title>OpenBikeSensor Visualisierung: Stra&szlig;enabschnitte</title>
 </head>
 
@@ -100,37 +105,24 @@
 				erhalten.</b>
 		</div>
 		<div id="legend" class="legend">
-			<b>Kartenlegende</b><br>
-			Streckenabschnitte werden wie folgt eingefärbt: <br>
-			Anteil der &Uuml;berholenden unter Minimalabstand:
-			<div id="colorbar" class="colorbar"> </div>
-			ohne Messungen: <font color="#808080">grau</font>
+			<ul class="main-navigation" , id="vis-menu"></ul>
 		</div>
 	</div>
 
 	<script type="text/javascript">
-		//			var criterion = "d_mean";
-		// var criterion = "p_above";
-		var criterion = "p_below";
-
-		var hist_xa = 0.0;
-		var hist_xb = 2.55;
-		var hist_xb_extends_to_infinity = true;
-		var hist_dx = 0.25;
-		var hist_n = Math.ceil((hist_xb - hist_xa) / hist_dx);
+		const hist_xa = 0.0;
+		const hist_xb = 2.55;
+		const hist_dx = 0.25;
+		const hist_n = Math.ceil((hist_xb - hist_xa) / hist_dx);
 
 		function histogramLabels() {
 
-			var labels = Array(hist_n);
-			for (var i = 0; i < hist_n; i++) {
-				var xa = hist_xa + hist_dx * i;
-				var xb = xa + hist_dx;
-				var xc = xa + 0.5 * hist_dx;
-				if (hist_xb_extends_to_infinity &&  (i == hist_n - 1)){
-					labels[i] = "≥" + (xa * 100).toFixed(0)
-				} else {
-					labels[i] = (xa * 100).toFixed(0) + "-" + (xb * 100).toFixed(0);
-				}
+			let labels = Array(hist_n);
+			for (let i = 0; i < hist_n; i++) {
+				let xa = hist_xa + hist_dx * i;
+				let xb = xa + hist_dx;
+				let xc = xa + 0.5 * hist_dx;
+				labels[i] = (xa * 100).toFixed(0) + "-" + (xb * 100).toFixed(0);
 			}
 
 			return labels;
@@ -138,9 +130,9 @@
 
 		function histogramColors(palette) {
 
-			var colors = Array(hist_n);
-			for (var i = 0; i < hist_n; i++) {
-				var xc = hist_xa + hist_dx * i;
+			let colors = Array(hist_n);
+			for (let i = 0; i < hist_n; i++) {
+				let xc = hist_xa + hist_dx * i;
 				colors[i] = palette.rgb_hex(xc);
 			}
 
@@ -148,14 +140,11 @@
 		}
 
 		function histogram(samples) {
-			var binCounts = new Array(hist_n).fill(0);
+			let binCounts = new Array(hist_n).fill(0);
 
-			for (var i = 0; i < samples.length; i++) {
-				var v = samples[i];
-				var j = Math.floor((v - hist_xa) / hist_dx);
-				if (hist_xb_extends_to_infinity){
-					j = Math.min(j, hist_n - 1);
-				}
+			for (let i = 0; i < samples.length; i++) {
+				let v = samples[i];
+				let j = Math.floor((v - hist_xa) / hist_dx);
 				if (j >= 0 && j < hist_n) {
 					binCounts[j]++;
 				}
@@ -166,7 +155,7 @@
 
 
 		function annotation_verbose(feature) {
-			var s = "";
+			let s = "";
 
 			s += "name: " + feature.get('name') + "\n";
 			s += "way_id: " + feature.get('way_id') + "\n";
@@ -197,9 +186,9 @@
 			d = feature.get('distance_overtaker_n_below_limit');
 			s += "distance_overtaker_n_below_limit: " + ((d == null) ? "n/a" : d.toFixed(0)) + "\n";
 
-			var n_below = feature.get('distance_overtaker_n_below_limit');
-			var n = feature.get('distance_overtaker_n');
-			var p = n_below / n * 100.0;
+			let n_below = feature.get('distance_overtaker_n_below_limit');
+			let n = feature.get('distance_overtaker_n');
+			let p = n_below / n * 100.0;
 			s += "overtakers below limit: " + ((p == null) ? "n/a" : p.toFixed(1)) + " %\n";
 
 			return s;
@@ -207,16 +196,19 @@
 
 		function annotation(feature) {
 
-			var s = "<table>";
+			let s = "<table>";
 
 			s += "<tr><td>Stra&szlig;enname:</td><td><a href=\"https://www.openstreetmap.org/way/" + feature.get('way_id') + "\" target=\"_blank\">" + feature.get('name')
 				+ "</a></td></tr>";
+			d = feature.get('distance_overtaker_limit');
+			s += "<tr><td>Mindest&uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td>";
 
-			s += "<tr height=\"5em\"></tr>";
+			d = feature.get('distance_overtaker_n');
+			s += "<tr><td>Anzahl Messungen:</td><td>" + ((d == null) ? "n/a" : d.toFixed(0)) + "</td></tr>";
 
-			var n_below = feature.get('distance_overtaker_n_below_limit');
-			var n = feature.get('distance_overtaker_n');
-			var p = n_below / n * 100.0;
+			let n_below = feature.get('distance_overtaker_n_below_limit');
+			let n = feature.get('distance_overtaker_n');
+			let p = n_below / n * 100.0;
 			s += "<tr><td>Unterschreitung Mindestabstand:</td><td>" + ((p == null) ? "n/a" : p.toFixed(1)) + "% der &Uuml;berholenden</td></tr>";
 
 			d = feature.get('distance_overtaker_mean');
@@ -228,144 +220,52 @@
 			d = feature.get('distance_overtaker_minimum');
 			s += "<tr><td>Minimum &Uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td></tr>";
 
-			s += "<tr height=\"5em\"></tr>";
-
-			d = feature.get('distance_overtaker_limit');
-			s += "<tr><td>Mindest&uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td>";
-
-			d = feature.get('distance_overtaker_n');
-			s += "<tr><td>Anzahl Messungen:</td><td>" + ((d == null) ? "n/a" : d.toFixed(0)) + "</td></tr>";
-
 			s += "</table>";
 
 			return s;
 		}
 
-		function smoothStep(x, a, b) {
-			var y = (x - a) / (b - a);
-			return Math.max(0.0, Math.min(1.0, y));
-		}
-
-		function styleFunction(feature, resolution, active = false) {
-			var n = feature.get('distance_overtaker_n');
-			var zone = feature.get('zone');
-			if (zone == "urban") {
-				palette = paletteUrban;
-			} else if (zone == "rural") {
-				palette = paletteRural;
-			} else {
-				palette = paletteUrban;
-			}
-
-			var valid = feature.get('valid');
-
-			var color = [0, 0, 0, 255];
-
-			if (valid) {
-				switch (criterion) {
-					case "d_mean":
-						var d = feature.get('distance_overtaker_mean');
-						color = palette.rgba_css(d)
-						break;
-					case "d_median":
-						var d = feature.get('distance_overtaker_median');
-						color = palette.rgba_css(d)
-						break;
-					case "d_min":
-						var d = feature.get('distance_overtaker_minimum');
-						color = palette.rgba_css(d)
-						break;
-					case "p_above":
-						var n = feature.get('distance_overtaker_n');
-						var a = feature.get('distance_overtaker_n_above_limit');
-						var p = undefined;
-						if (n > 0) {
-							p = a / n;
-						}
-						color = palettePercentage.rgba_css(p * 100.0);
-						break;
-					case "p_below":
-						var n = feature.get('distance_overtaker_n');
-						var a = feature.get('distance_overtaker_n_below_limit');
-						var p = undefined;
-						if (n > 0) {
-							p = a / n;
-						}
-						// color = palettePercentageInverted.rgba_css(p*100.0);
-						// color = palettePercentageZweirat.rgba_css(p*100.0);
-						color = palettePercentageZweirat.rgba(p * 100.0);
-						break;
-				}
-			} else {
-				color = [128, 128, 128, 255];
-			}
-
-
-			var detail = smoothStep(resolution, 2.0, 1.0);
-			var mid = smoothStep(resolution, 30.0, 20.0) - smoothStep(resolution, 2.0, 1.0);
-			var overview = smoothStep(resolution, 20.0, 30.0);
-
-			console.log("resolution=" + resolution + "detail/mid/overview=" + detail + "/" + mid + "/" + overview);
-			var alpha = 1.0 * detail + 0.5 * mid + 0.5 * overview;
-			var width = active ? 2 : 1;
-			width = (active ? 4.0 : 2.0) * detail + 4 * mid + 200.0 / resolution * overview;
-
-			color[3] = alpha;
-
-			var style = new ol.style.Style({
-				stroke: new ol.style.Stroke({
-					color: color,
-					width: width,
-				})
-			});
-			return style;
-		}
-
-		var map = new ol.Map({
+		let map = new ol.Map({
 			target: 'map',
 			layers: [
 				new ol.layer.Tile({
 					source: new ol.source.OSM({
 						url: 'https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png',
 						crossOrigin: null
-						// url: 'https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 					})
 				})
 			],
 			view: new ol.View({
 				center: ol.proj.fromLonLat([9.1798000, 48.7759000]),
-	  			zoom: 13
+				zoom: 13
 			})
 		});
 
-		
-
-		var dataSource = new ol.source.Vector({
+		let dataSource = new ol.source.Vector({
 			format: new ol.format.GeoJSON(),
 			url: 'json/roads.json'
 		})
 
-		var vectorLayer = new ol.layer.Vector({
+		// let defaultStyle = new RoadStyle();
+		// let currentStyle = defaultStyle;
+
+		let vectorLayer = new ol.layer.Vector({
 			source: dataSource,
-			style: styleFunction
+			//style: function (feature, resolution){return currentStyle.styleFunction(feature, resolution)}
+			style: new ol.style.Style({
+				stroke: new ol.style.Stroke({
+					color: [0, 0, 0, 255],
+					width: 2,
+				})
+			})
 		});
 
 		map.addLayer(vectorLayer);
 
-		const changeListener = dataSource.once('change', function(event) {
-    		if (dataSource.getState() == 'ready') {
-				const extent = vectorLayer.getSource().getExtent(); 
-				const mapSize = map.getSize();
-				const overlay = document.getElementById("overlay");
-				const marginLeft = overlay.offsetWidth + overlay.offsetLeft;
-    			map.getView().fit(extent, {size: mapSize, padding: [0, 0, 0, marginLeft]}); 
-			}
-		});
+		let histogramColorsRural = histogramColors(paletteRural).reverse();
+		let histogramColorsUrban = histogramColors(paletteUrban).reverse();
 
-		var histogramColorsRural = histogramColors(paletteRural).reverse();
-		var histogramColorsUrban = histogramColors(paletteUrban).reverse();
-
-		var chartOptions = {
+		let chartOptions = {
 			series: [{
 				name: 'Überholende',
 				data: Array(hist_n).fill(0)
@@ -422,34 +322,36 @@
 			}
 		};
 
-		var chart = new ApexCharts(document.querySelector("#chart"), chartOptions);
+		let chart = new ApexCharts(document.querySelector("#chart"), chartOptions);
 		chart.render();
 
+		let activeFeature = undefined;
+		let hoveredFeature = undefined;
 
-		var noFeatureActive = true;
+		const visualization = new InteractiveVisualization(map, dataSource);
 
+		map.on('singleclick', function (event) {visualization.onSingleClick(event)});
+
+		/*
 		map.on('singleclick', function (evt) {
-			var feature = map.forEachFeatureAtPixel(evt.pixel,
+			let feature = map.forEachFeatureAtPixel(evt.pixel,
 				function (feature, layer) {
 					return feature;
 				});
 
-			var resolution = map.getView().getResolution();
+			let resolution = map.getView().getResolution();
 
-			if (!noFeatureActive) {
-				vectorLayer.getSource().getFeatures().forEach(f => {
-					f.setStyle(styleFunction(f, resolution, false));
-				});
-				noFeatureActive = true;
+			if (activeFeature) {
+				activeFeature.setStyle(currentStyle.styleFunction(activeFeature, resolution, false, activeFeature == hoveredFeature));
+				activeFeature = undefined;
 			}
 
 			if (feature && dataSource.hasFeature(feature)) {
-				console.log(annotation_verbose(feature));
 				caption.innerHTML = annotation(feature);
 				caption.style.alignItems = "flex-start";
 
-				var zone = feature.get('zone');
-				var colors = undefined;
+				let zone = feature.get('zone');
+				let colors = undefined;
 				switch (zone) {
 					case "urban":
 						colors = histogramColorsUrban;
@@ -461,31 +363,71 @@
 						colors = histogramColorsUrban;
 				}
 
-
 				chart.updateOptions({
 					colors: colors
 				});
 
-				var hist = histogram(feature.get('distance_overtaker_measurements')).reverse();
+				let hist = histogram(feature.get('distance_overtaker_measurements')).reverse();
 
 				chart.updateSeries([{
 					name: 'Überholende',
 					data: hist,
 				}]);
 
+				feature.setStyle(currentStyle.styleFunction(feature, resolution, true, feature == hoveredFeature));
+				activeFeature = feature;
+			}
+		});
+		*/
 
-				feature.setStyle(styleFunction(feature, resolution, true));
-				noFeatureActive = false;
+		map.on('pointermove', function (event){ visualization.onPointerMove(event)});
+		/*
+		map.on('pointermove', function (evt) {
+			if (evt.dragging) {
+				return;
 			}
 
+			let feature = map.forEachFeatureAtPixel(map.getEventPixel(evt.originalEvent),
+				function (feature, layer) {
+					return feature;
+				});
 
+			let resolution = map.getView().getResolution();
+
+			if (hoveredFeature) {
+				hoveredFeature.setStyle(currentStyle.styleFunction(hoveredFeature, resolution, hoveredFeature == activeFeature, false));
+				hoveredFeature = undefined;
+			}
+
+			if (feature && dataSource.hasFeature(feature)) {
+				feature.setStyle(currentStyle.styleFunction(feature, resolution, feature == activeFeature, true));
+				hoveredFeature = feature;
+			}
+			return feature;
+		});
+		*/
+
+		const menu = new Menu("vis-menu", visualization);
+		menu.addMenu(["Darstellung", "Empfohlen"], "Mittelwert Überholabstand", new RoadStyle_MeanDistance());
+		menu.addMenu(["Darstellung", "OpenBikeSensor"], "OpenBikeSensor #1");
+		menu.addMenu(["Darstellung", "Zweirat"], "Zweirat #1");
+		menu.addMenu(["Darstellung", "Rohdaten"], "Mittelwert Überholabstand", new RoadStyle_MeanDistance());
+		menu.addMenu(["Darstellung", "Rohdaten"], "Median Überholabstand");
+		menu.addMenu(["Darstellung", "Rohdaten"], "Minimum Überholabstand");
+		menu.addMenu(["Darstellung", "Rohdaten"], "Anteil Überholabstand unterschritten");
+		menu.addMenu(["Darstellung", "Rohdaten"], "Mindestüberholabstand");
+		menu.addMenu(["Darstellung", "Rohdaten"], "Anzahl Überholvorgänge");
+
+		const changeListener = dataSource.once('change', function(event) {
+    		if (dataSource.getState() == 'ready') {
+				const extent = vectorLayer.getSource().getExtent(); 
+				const mapSize = map.getSize();
+				const overlay = document.getElementById("overlay");
+				const marginLeft = overlay.offsetWidth + overlay.offsetLeft;
+    			map.getView().fit(extent, {size: mapSize, padding: [0, 0, 0, marginLeft]}); 
+			}
 		});
 
-
-
-
-		// palettePercentageInverted.writeLegend('colorbar', [0, 100.0], '%');
-		palettePercentageZweirat.writeLegend('colorbar', [0, 100.0], '%');
 	</script>
 </body>
 
