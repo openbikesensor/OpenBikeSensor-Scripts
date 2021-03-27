@@ -16,6 +16,7 @@ setup(
         "console_scripts": [
             "obs-face=obs.bin.obs_face:main",
             "obs-filter-privacy=obs.bin.obs_filter_privacy:main",
+            "obs-provision=obs.bin.obs_provision:main",
         ]
     },
 )
