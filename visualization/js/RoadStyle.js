@@ -25,7 +25,7 @@ class RoadStyle{
 
 
 
-class RoadStyle_MeanDistance{
+class RoadStyle_MeanDistance extends RoadStyle{
 
 
 	styleFunction(feature, resolution, selected=false, hovered=false){
