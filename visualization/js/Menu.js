@@ -4,34 +4,44 @@ class Menu {
 		parent = document.getElementById(id);
 
 		this.root = new MenuEntry("root", "root", undefined, parent);
-
-		// this.root.appendToList(document.getElementById(id));
 	}
 
-	addMenu(path, caption, action=undefined){
-		var parent = this.root;
-		for (var i=0; i<path.length; i++){
-			var node = parent.getSubEntry(path[i]);
-			if (node == undefined){
-				node = new MenuEntry(path[i], path[i], undefined);
+	addMenu(path, action=undefined){
+		let parent = this.root;
+
+		for (let i=0; i<path.length; i++){
+			const isLeaf = (i == path.length - 1);
+
+			// determine id, or variants of it in case of collision
+			let id = path[i];
+			let node = parent.getSubEntry(id);
+			while( (isLeaf && node) || (!isLeaf && node && node.isLeaf())) {
+				id = path[i] + " #" + j;
+				j++;
+				node = parent.getSubEntry(id);
+			}			
+
+			// add node if required
+			if (isLeaf){
+				// add a leaf node
+				node = new MenuEntry(id, id, action);
 				parent.addSubEntry(node);
+			} else {
+				// add a missing intermediate node
+				if (!node){
+					node = new MenuEntry(id, id, undefined);
+					parent.addSubEntry(node);	
+				}
 			}
-			parent = node;
-		}
-
-		var id = caption;
-
-		if (parent != undefined){
-			var newEntry = new MenuEntry(caption, id, action)
-			parent.addSubEntry(newEntry);
+			parent = node;			
 		}
 	}
 
 	parseTree(path){
-		var p = this.root;
-		for (var i=0; i<path.length; i++){
+		let p = this.root;
+		for (let i=0; i<path.length; i++){
 			p = p.getSubEntry(path[i]);
-			if (p == undefined){
+			if (!p){
 				break;
 			}
 		}
@@ -45,13 +55,17 @@ class MenuEntry {
 	constructor(caption, id, action, ul=undefined){
 		this.id = id;
 		this.caption = caption;
+		this.action = action;
 
 		if (ul == undefined){
 			ul = document.createElement("ul");
-			var li = document.createElement("li");
-			var a = document.createElement("a");
+			let li = document.createElement("li");
+			let a = document.createElement("a");
 			a.setAttribute("href", "#");
-			var t = document.createTextNode(caption);
+			if (action){
+				a.setAttribute("onclick", action);
+			}
+			let t = document.createTextNode(caption);
 			a.appendChild(t);
 			li.appendChild(a);
 			li.appendChild(ul);
@@ -83,6 +97,10 @@ class MenuEntry {
 
 	appendToList(parent){
 		parent.appendChild(this.objListItem);
+	}
+
+	isLeaf(){
+		return this.action != undefined;
 	}
 
 }

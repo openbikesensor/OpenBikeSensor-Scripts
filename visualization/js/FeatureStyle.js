@@ -22,7 +22,7 @@ class FeatureStyle{
 
 
 
-class RoadStyle_MeanDistance{
+class RoadStyle_MeanDistance extends FeatureStyle{
 
 
 	styleFunction(feature, resolution, selected=false, hovered=false){

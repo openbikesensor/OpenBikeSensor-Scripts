@@ -7,8 +7,28 @@ class InteractiveVisualization {
 
         this.map = map;
         this.dataSource = dataSource;
+
+        this.menu = new Menu("vis-menu");
+
+        this.representations = [];
+
+		// map.on('singleclick', function (event){this.onSingleClick(event)});
+		// map.on('pointermove', function (event){this.onPointerMove(event)});
+
+		map.on('singleclick', event => this.onSingleClick(event));
+		map.on('pointermove', event => this.onPointerMove(event));
     }
 
+    addRepresentation(path, representation){
+        this.representations.push(representation);
+        const i = this.representations.length - 1;
+        this.menu.addMenu(path, "visualization.selectRepresentation(" + i + ")");
+    }
+
+    selectRepresentation(ix){
+        console.log("selected representation " + ix);
+        this.setFeatureFormatter(this.representations[ix]);
+    }
 
     setFeatureFormatter(featureFormatter) {
         if (this.featureFormatter) {
@@ -16,6 +36,12 @@ class InteractiveVisualization {
         }
         this.featureFormatter = featureFormatter;
         featureFormatter.select();
+    }
+
+    styleFunction(feature, resolution, selected=false, hovered=false){
+        if (this.featureFormatter){
+            return this.featureFormatter.styleFunction(feature, resolution, selected, hovered);
+        }
     }
 
     onPointerMove(event) {
@@ -31,12 +57,12 @@ class InteractiveVisualization {
         const resolution = map.getView().getResolution();
 
         if (this.hoveredFeature) {
-            this.hoveredFeature.setStyle(this.featureFormatter.styleFunction(hoveredFeature, resolution, this.hoveredFeature == this.activeFeature, false));
+            this.hoveredFeature.setStyle(this.featureFormatter.styleFunction(this.hoveredFeature, resolution, this.hoveredFeature == this.activeFeature, false));
             this.hoveredFeature = undefined;
         }
 
         if (feature && dataSource.hasFeature(feature)) {
-            feature.setStyle(this.featureFormatter.styleFunction(feature, resolution, feature == activeFeature, true));
+            feature.setStyle(this.featureFormatter.styleFunction(feature, resolution, feature == this.activeFeature, true));
             this.hoveredFeature = feature;
         }
     }
@@ -61,5 +87,3 @@ class InteractiveVisualization {
     }
 
 }
-
-
