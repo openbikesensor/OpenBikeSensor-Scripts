@@ -76,7 +76,7 @@ class InteractiveVisualization {
         const resolution = map.getView().getResolution();
 
         if (this.activeFeature) {
-            this.activeFeature.setStyle(this.featureFormatter.styleFunction(activeFeature, resolution, false, this.activeFeature == this.hoveredFeature));
+            this.activeFeature.setStyle(this.featureFormatter.styleFunction(this.activeFeature, resolution, false, this.activeFeature == this.hoveredFeature));
             this.activeFeature = undefined;
         }
 
