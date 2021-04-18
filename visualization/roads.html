@@ -83,7 +83,7 @@
 	<script type="text/javascript" src="js/InteractiveVisualization.js"></script>
 	<script type="text/javascript" src="js/Menu.js"></script>
 	<script type="text/javascript" src="js/FeatureStyle.js"></script>
-	<script type="text/javascript" src="js/OBS.js"></script>
+	<script type="text/javascript" src="js/Colorscale.js"></script>
 	
 	<script type="text/javascript"src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 
@@ -253,21 +253,13 @@
 
 		let vectorLayer = new ol.layer.Vector({
 			source: dataSource,
-			//style: function (feature, resolution){return currentStyle.styleFunction(feature, resolution)}
-			/*style: new ol.style.Style({
-				stroke: new ol.style.Stroke({
-					color: [0, 0, 0, 255],
-					width: 2,
-				})
-			})
-			*/ 
 			style: (feature, resolution) => visualization.styleFunction(feature, resolution)
 		});
 
 		map.addLayer(vectorLayer);
 
-		let histogramColorsRural = histogramColors(paletteRural).reverse();
-		let histogramColorsUrban = histogramColors(paletteUrban).reverse();
+		let histogramColorsRural = histogramColors(colorscaleRural).reverse();
+		let histogramColorsUrban = histogramColors(colorscaleUrban).reverse();
 
 		let chartOptions = {
 			series: [{
@@ -409,13 +401,12 @@
 		});
 		*/
 
-		visualization.addRepresentation(["Darstellung", "Empfohlen", "Mittelwert Überholabstand"], new RoadStyle_MeanDistance());
 		// visualization.addRepresentation(["Darstellung", "OpenBikeSensor"], "OpenBikeSensor #1");
 		//visualization.addRepresentation(["Darstellung", "Zweirat"], "Zweirat #1");
-		//visualization.addRepresentation(["Darstellung", "Rohdaten"], "Mittelwert Überholabstand", new RoadStyle_MeanDistance());
-		//visualization.addRepresentation(["Darstellung", "Rohdaten"], "Median Überholabstand");
-		//visualization.addRepresentation(["Darstellung", "Rohdaten"], "Minimum Überholabstand");
-		//visualization.addRepresentation(["Darstellung", "Rohdaten"], "Anteil Überholabstand unterschritten");
+		visualization.addRepresentation(["Darstellung", "Rohdaten", "Mittelwert Überholabstand"], new RoadStyle_MeanDistance());
+		visualization.addRepresentation(["Darstellung", "Rohdaten", "Median Überholabstand"], new RoadStyle_MedianDistance());
+		visualization.addRepresentation(["Darstellung", "Rohdaten", "Minimum Überholabstand"], new RoadStyle_MinimumDistance());
+		visualization.addRepresentation(["Darstellung", "Rohdaten", "Anteil Überholabstand unterschritten"],  new RoadStyle_RatioCloseOvertakers());
 		//visualization.addRepresentation(["Darstellung", "Rohdaten"], "Mindestüberholabstand");
 		//visualization.addRepresentation(["Darstellung", "Rohdaten"], "Anzahl Überholvorgänge");
 
