@@ -1,3 +1,22 @@
+# Copyright (C) 2020-2021 OpenBikeSensor Contributors
+# Contact: https://openbikesensor.org
+#
+# This file is part of the OpenBikeSensor Scripts Collection.
+#
+# The OpenBikeSensor Scripts Collection is free software: you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the License,
+# or (at your option) any later version.
+#
+# The OpenBikeSensor Scripts Collection is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser
+# General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with the OpenBikeSensor Scripts Collection.  If not, see
+# <http://www.gnu.org/licenses/>.
+
 import csv
 from tzwhere import tzwhere
 import numpy as np
@@ -25,6 +44,8 @@ class ImportMeasurementsCsv:
         self.correct_timezone = correct_timezone
         self.left_is_overtaker_side = left_right_is_swapped != right_hand_traffic
         self.case_is_overtaker_side = case_is_left == right_hand_traffic
+
+        self.reject_measurements_before = datetime.datetime(2018, 1, 1, tzinfo=datetime.timezone.utc)
 
         self.measurement_template = {'time': None, 'latitude': None, 'longitude': None,
                                      'distance_overtaker': None, 'distance_stationary': None, 'confirmed': None,
@@ -316,12 +337,14 @@ class ImportMeasurementsCsv:
                          datetime.datetime.strptime(
                              date + " " + time,
                              '%d.%m.%Y %H:%M:%S').replace(tzinfo=datetime.timezone.utc),
+                         reject=lambda t: t < self.reject_measurements_before,
                          default=None, required=True
                          ),
             CsvExtractor(["Latitude", "Longitude"], ["latitude", "longitude"],
                          lambda lat, lon: [float(lat), float(lon)],
                          accept=lambda lat_, lon_: abs(lat_) <= 90.0 and
                                                    abs(lon_) <= 180.0,
+                         reject=lambda lat_, lon_: lat_ == 0.0 and lon_ == 0.0,
                          default=[None, None], required=True),
             CsvExtractor("Confirmed", "confirmed",
                          lambda v: int(v) > 0,
@@ -398,6 +421,7 @@ class ImportMeasurementsCsv:
                          datetime.datetime.strptime(
                              date + " " + time,
                              '%d.%m.%Y %H:%M:%S').replace(tzinfo=datetime.timezone.utc),
+                         reject=lambda t: t < self.reject_measurements_before,
                          default=None, required=True
                          ),
             CsvExtractor("Millis", "time_system",

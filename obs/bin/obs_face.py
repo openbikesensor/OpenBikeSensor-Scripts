@@ -1,11 +1,34 @@
+#!/usr/bin/python
+
+# Copyright (C) 2020-2021 OpenBikeSensor Contributors
+# Contact: https://openbikesensor.org
+#
+# This file is part of the OpenBikeSensor Scripts Collection.
+#
+# The OpenBikeSensor Scripts Collection is free software: you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the License,
+# or (at your option) any later version.
+#
+# The OpenBikeSensor Scripts Collection is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser
+# General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with the OpenBikeSensor Scripts Collection.  If not, see
+# <http://www.gnu.org/licenses/>.
+
 import argparse
 import pathlib
 from multiprocessing import Process, Queue
 import logging
 import os
+import sys
 import time
 
 import jsons
+import coloredlogs
 
 from obs.face.importer import ImportMeasurementsCsv
 from obs.face.annotate import AnnotateMeasurements
@@ -13,6 +36,8 @@ from obs.face.filter import MeasurementFilter
 from obs.face.geojson import ExportMeasurements, ExportRoadAnnotation
 from obs.face.osm import DataSource as OSMDataSource
 from obs.face.filter import PrivacyFilter, AnonymizationMode
+
+log = logging.getLogger(__name__)
 
 
 def collect_datasets(path, exclusion_list):
@@ -43,16 +68,17 @@ def collect_datasets(path, exclusion_list):
                         "user_id": user_id,
                     }
                     datasets.append(dataset)
-                    logging.info("adding " + filename_relative)
+                    log.debug("adding " + filename_relative)
                 else:
-                    logging.info("excluding " + filename_relative)
+                    log.debug("excluding " + filename_relative)
 
     return datasets
 
 
 def process_datasets(datasets, path_annotated, osm, skip_if_json_exists=True, path_cache='./cache',
                      n_worker_processes=1, process_parallel=True, right_hand_traffic=True):
-    logging.info("annotating datasets")
+
+    log.info("annotating datasets")
 
     annotator = AnnotateMeasurements(osm, cache_dir=path_cache)
     measurement_filter = MeasurementFilter()
@@ -97,10 +123,18 @@ def process_datasets(datasets, path_annotated, osm, skip_if_json_exists=True, pa
 
         finished = output_queue.empty() and input_queue.empty() and (n_out == n_in)
 
-        print("datasets: total {}, input queue {}, output queue {}, finished {} ({} measurements); "
-              "worker: running {}, total {}".format(n_in, input_queue.qsize(), output_queue.qsize(),
-                                                    n_out, len(measurements),
-                                                    n_alive, len(processes)), end="\n")
+        try:
+            input_queue_size = input_queue.qsize()
+            output_queue_size = output_queue.qsize()
+        except NotImplementedError:
+            # on MacOS qsize() throws, so substitute the approximate queue size for the debug log
+            input_queue_size = "N/A"
+            output_queue_size = "N/A"
+        
+        log.debug("datasets: total %s, input queue %s, output queue %s, "
+                "finished %s (%s measurements); worker: running %s, total %s",
+                n_in, input_queue_size, output_queue_size, n_out,
+                len(measurements), n_alive, len(processes))
 
         if process_parallel:
             # (re)spawn processes
@@ -186,26 +220,26 @@ class AnnotationProcess(Process):
             t2 = pathlib.Path(filename_json).stat().st_mtime
 
             if t1 <= t2:
-                logging.debug("using cached result: " + filename_json)
+                log.debug("using cached result: " + filename_json)
                 with open(filename_json, 'r') as infile:
                     dataset_annotated = jsons.loads(infile.read())
                 do_annotate = False
             else:
-                logging.debug("cached result is outdated")
+                log.debug("cached result is outdated")
 
         if do_annotate:
             filename_log = os.path.join(self.path_annotated,
                                         os.path.splitext(dataset["filename_relative"])[0] + '.log')
 
             os.makedirs(os.path.dirname(filename_log), exist_ok=True)
-            with open(filename_log, "w") as log:
+            with open(filename_log, "w") as logfile:
                 try:
                     measurements, statistics = self.importer.read(dataset["filename"], user_id=dataset["user_id"],
                                                                   dataset_id=dataset["filename_relative"],
-                                                                  log=log)
+                                                                  log=logfile)
                     measurements = self.annotator.annotate(measurements)
 
-                    measurements = self.measurement_filter.filter(measurements, log=log)
+                    measurements = self.measurement_filter.filter(measurements, log=logfile)
 
                     dataset_annotated = {"measurements": measurements, "statistics": statistics}
                     # write out
@@ -213,19 +247,14 @@ class AnnotationProcess(Process):
                     with open(filename_json, 'w') as outfile:
                         outfile.write(jsons.dumps(dataset_annotated))
 
-                except ValueError as e:
-                    print("FAILED: " + str(e))
-                    dataset_annotated = None
-                except IOError as e:
-                    print("FAILED: " + str(e))
+                except (ValueError, IOError):
+                    log.exception("Annotation failed with error")
                     dataset_annotated = None
 
         return dataset_annotated
 
 
 def main():
-    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
-
     parser = argparse.ArgumentParser(description='annotates, filters, aggregates OpenBikeSensor files, and exports '
                                                  'them for visualization')
 
@@ -243,6 +272,8 @@ def main():
 
     parser.add_argument('-b', '--base-path', required=False, action='store', default='./data/',
                         help='base path to where all data is stored')
+    parser.add_argument('--no-base-path', action='store_const', const=None, dest='base_path',
+                        help='do not use a base path (provide explicit paths as required)')
 
     parser.add_argument('--path-annotated', required=False, action='store', default=None,
                         help='path for storing annotated data')
@@ -270,29 +301,35 @@ def main():
     parser.add_argument('--recompute', required=False, action='store_true', default=False,
                         help='always recompute annotation results')
 
-    parser.add_argument('--anonymize-user-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|full',
-                        help='Choose whether to "remove" user ID (default), store only "hashed" versions (requires --anonymization-hash-salt) or include '
-                        'the "full" user ID in outputs.')
+    parser.add_argument('--anonymize-user-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
+                        help='Choose whether to "remove" user ID (default), store only "hashed" versions (requires --anonymization-hash-salt) or "keep" '
+                        'the full user ID in outputs.')
 
-    parser.add_argument('--anonymize-measurement-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|full',
-                        help='Choose whether to "remove" measurement ID, store only "hashed" versions (requires --anonymization-hash-salt) or include '
-                        'the "full" measurement ID in outputs.')
+    parser.add_argument('--anonymize-measurement-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
+                        help='Choose whether to "remove" measurement ID, store only "hashed" versions (requires --anonymization-hash-salt) or "keep" '
+                        'the full measurement ID in outputs.')
 
     parser.add_argument('--anonymization-hash-salt', action='store', type=str,
                         help='A salt/seed for use when hashing user or measurement IDs. Arbitrary string, but kept secret.')
 
+    parser.add_argument('-v', '--verbose', action='store_true', help='be verbose')
+
     args = parser.parse_args()
 
-    if args.input is None:
-        args.input = os.path.join(args.base_path, 'input')
-    if args.path_annotated is None:
-        args.path_annotated = os.path.join(args.base_path, 'annotated')
-    if args.output_collected is None:
-        args.output_collected = os.path.join(args.base_path, 'collected', 'measurements.json')
-    if args.output_geojson_roads is None:
-        args.output_geojson_roads = os.path.join(args.base_path, 'visualization', 'roads.json')
-    if args.output_geojson_measurements is None:
-        args.output_geojson_measurements = os.path.join(args.base_path, 'visualization', 'measurements.json')
+    coloredlogs.install(level=logging.DEBUG if args.verbose else logging.INFO,
+        fmt="%(asctime)s %(name)s %(levelname)s %(message)s")
+
+    if args.base_path is not None:
+        if args.input is None:
+            args.input = os.path.join(args.base_path, 'input')
+        if args.path_annotated is None:
+            args.path_annotated = os.path.join(args.base_path, 'annotated')
+        if args.output_collected is None:
+            args.output_collected = os.path.join(args.base_path, 'collected', 'measurements.json')
+        if args.output_geojson_roads is None:
+            args.output_geojson_roads = os.path.join(args.base_path, 'visualization', 'roads.json')
+        if args.output_geojson_measurements is None:
+            args.output_geojson_measurements = os.path.join(args.base_path, 'visualization', 'measurements.json')
 
     if args.anonymize_user_id == AnonymizationMode.HASHED and args.anonymization_hash_salt is None:
         raise ValueError("--anonymization-hash-salt is required for --anonymize-user-id=hashed")
@@ -303,48 +340,74 @@ def main():
     if args.district:
         logging.warning('--district parameter is deprecated; required map parts are now selected automatically')
 
-    logging.debug("parameter list:")
-    logging.debug("input=" + args.input)
-    logging.debug("path_annotated=" + args.path_annotated)
-    logging.debug("output_collected=" + args.output_collected)
-    logging.debug("anonymize user ID=" + args.anonymize_user_id)
-    logging.debug("anonymize measurement ID=" + args.anonymize_measurement_id)
-    logging.debug("traffic=" + ("right hand" if args.right_hand_traffic else "left hand"))
+    log.debug("parameter list:")
+    log.debug("input=%s", args.input)
+    log.debug("path_annotated=%s", args.path_annotated)
+    log.debug("output_collected=%s", args.output_collected)
+    log.debug("anonymize user ID=%s", args.anonymize_user_id)
+    log.debug("anonymize measurement ID=%s", args.anonymize_measurement_id)
+    log.debug("traffic=%s hand", "right" if args.right_hand_traffic else "left")
 
     if args.annotate or args.collect or args.visualization:
-        logging.info('Loading OpenStreetMap data')
+        log.info('Loading OpenStreetMap data')
         map_source = OSMDataSource(cache_dir=args.path_cache)
 
     if args.annotate or args.collect:
-        logging.info('Collecting datasets')
+        if not args.input:
+            log.error('--input or --base-path required')
+            sys.exit(1)
+
+        if not args.path_annotated:
+            log.error('--path-annotated or --base-path required')
+            sys.exit(1)
+
+        log.info('Collecting datasets')
         datasets = collect_datasets(args.input, args.input_exclude)
 
-        logging.info('Annotating and filtering CSV files')
+        log.info('Annotating and filtering CSV files')
         measurements, statistics = process_datasets(datasets, args.path_annotated, map_source,
                                                     path_cache=args.path_cache,
                                                     skip_if_json_exists=not args.recompute,
                                                     n_worker_processes=args.parallel,
                                                     process_parallel=args.parallel > 0)
 
-        logging.info("Statistics:")
-        logging.info("number of files:        {}".format(statistics["n_files"]))
-        logging.info("total measurements:     {}".format(statistics["n_measurements"]))
-        logging.info("valid measurements:     {}".format(statistics["n_valid"]))
-        logging.info("confirmed measurements: {}".format(statistics["n_confirmed"]))
-        logging.info("time range:             {} to {}".format(statistics["t_min"], statistics["t_max"]))
-        logging.info("continuous time:        {}s".format(statistics["t"]))
-        logging.info("continuous distance:    {}m".format(statistics["d"]))
-        logging.info("continuous segments:    {}".format(statistics["n_segments"]))
+        log.info("Statistics:")
+        log.info("number of files:        %s", statistics["n_files"])
+        log.info("total measurements:     %s", statistics["n_measurements"])
+        log.info("valid measurements:     %s", statistics["n_valid"])
+        log.info("confirmed measurements: %s", statistics["n_confirmed"])
+        log.info("time range:             %s to %s", statistics["t_min"], statistics["t_max"])
+        log.info("continuous time:        %ss", statistics["t"])
+        log.info("continuous distance:    %sm", statistics["d"])
+        log.info("continuous segments:    %s", statistics["n_segments"])
 
     if args.collect:
-        logging.info("exporting collected measurements")
+        if not args.output_collected:
+            logging.error('--output-collected or --base-path required')
+            sys.exit(1)
+
+        log.info("exporting collected measurements")
+
         # write out
         os.makedirs(os.path.dirname(args.output_collected), exist_ok=True)
         with open(args.output_collected, 'w') as outfile:
             outfile.write(jsons.dumps({"measurements": measurements, "statistics": statistics}))
 
     if args.visualization:
-        logging.info("exporting visualization data")
+        if not args.output_collected:
+            logging.error('--output-collected or --base-path required')
+            sys.exit(1)
+
+        if not args.output_geojson_measurements:
+            logging.error('--output-geojson-measurements or --base-path required')
+            sys.exit(1)
+
+        if not args.output_geojson_roads:
+            logging.error('--output-geojson-roads or --base-path required')
+            sys.exit(1)
+
+        log.info("exporting visualization data")
+
         with open(args.output_collected, 'r') as infile:
             data = jsons.loads(infile.read())
         measurements = data["measurements"]
@@ -356,17 +419,17 @@ def main():
             hash_salt=args.anonymization_hash_salt,
           ).filter(measurements)
 
-        logging.info("exporting GeoJson measurements")
+        log.info("exporting GeoJson measurements")
         exporter = ExportMeasurements(args.output_geojson_measurements, do_filter=True)
         exporter.add_measurements(measurements)
         exporter.finalize()
 
-        logging.info("exporting GoeJson roads")
+        log.info("exporting GoeJson roads")
         exporter = ExportRoadAnnotation(args.output_geojson_roads, map_source, right_hand_traffic=args.right_hand_traffic)
         exporter.add_measurements(measurements)
         exporter.finalize()
 
-    logging.info("done")
+    log.info("done")
 
 
 if __name__ == "__main__":

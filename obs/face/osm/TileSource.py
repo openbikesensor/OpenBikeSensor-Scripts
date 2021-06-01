@@ -1,3 +1,22 @@
+# Copyright (C) 2020-2021 OpenBikeSensor Contributors
+# Contact: https://openbikesensor.org
+#
+# This file is part of the OpenBikeSensor Scripts Collection.
+#
+# The OpenBikeSensor Scripts Collection is free software: you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the License,
+# or (at your option) any later version.
+#
+# The OpenBikeSensor Scripts Collection is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser
+# General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with the OpenBikeSensor Scripts Collection.  If not, see
+# <http://www.gnu.org/licenses/>.
+
 import requests
 import numpy as np
 import logging
@@ -5,6 +24,8 @@ import math
 import os
 import pickle
 import time
+
+log = logging.getLogger(__name__)
 
 
 class TileSource:
@@ -30,13 +51,13 @@ class TileSource:
         out body;"""
 
     def get_tile(self, zoom, x_tile, y_tile, filter_id="default"):
-        logging.debug("tile requested: zoom=%d, x=%d, y=%d, filter_id=%s", zoom, x_tile, y_tile, filter_id)
+        log.debug("tile requested: zoom=%d, x=%d, y=%d, filter_id=%s", zoom, x_tile, y_tile, filter_id)
 
         # try to read from cache
         filename_cache = os.path.join(self.cache_dir, 'TileSource', filter_id, str(zoom), str(x_tile), str(y_tile), 'tile.pickle')
         request_tile = True
         if self.use_cache and os.path.isfile(filename_cache):
-            logging.debug("loading tile cached in %s", filename_cache)
+            log.debug("loading tile cached in %s", filename_cache)
             request_tile = False
             try:
                 with open(filename_cache, 'rb') as infile:
@@ -44,7 +65,7 @@ class TileSource:
                     data = pickle.load(infile)
                 nodes, ways, relations = data["nodes"], data["ways"], data["relations"]
             except IOError as e:
-                logging.debug("loading tile %s failed", filename_cache)
+                log.debug("loading tile %s failed", filename_cache)
                 request_tile = True
 
         # try to retrieve from server
@@ -57,7 +78,7 @@ class TileSource:
 
             # write to cache if
             if self.use_cache:
-                logging.debug("writing tile to %s", filename_cache)
+                log.debug("writing tile to %s", filename_cache)
                 data = {"nodes": nodes, "ways": ways, "relations": relations}
                 os.makedirs(os.path.dirname(filename_cache), exist_ok=True)
                 with open(filename_cache, 'wb') as outfile:
@@ -81,7 +102,7 @@ class TileSource:
                 success = True
                 break
 
-            logging.warning('could not retrieve tile, server returned %s (%d)', response.reason, response.status_code)
+            log.warning('could not retrieve tile, server returned %s (%d)', response.reason, response.status_code)
             time.sleep((try_count+1) * 3)
 
         if success:

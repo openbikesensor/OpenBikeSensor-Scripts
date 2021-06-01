@@ -1,8 +1,28 @@
+# Copyright (C) 2020-2021 OpenBikeSensor Contributors
+# Contact: https://openbikesensor.org
+#
+# This file is part of the OpenBikeSensor Scripts Collection.
+#
+# The OpenBikeSensor Scripts Collection is free software: you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public License as
+# published by the Free Software Foundation, either version 3 of the License,
+# or (at your option) any later version.
+#
+# The OpenBikeSensor Scripts Collection is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser
+# General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with the OpenBikeSensor Scripts Collection.  If not, see
+# <http://www.gnu.org/licenses/>.
+
 import json
 import os
 import logging
 import math
 
+log = logging.getLogger(__name__)
 
 class ExportMeasurements:
     def __init__(self, filename, do_filter=True):
@@ -75,14 +95,14 @@ class ExportMeasurements:
             self.features.append(feature)
 
     def finalize(self):
-        logging.info("{} samples, {} valid ({} valid lat/lon, {} valid distance, {} confirmed)"\
-                     .format(self.n_samples, self.n_valid, self.n_valid_latlon, self.n_valid_dist, self.n_confirmed))
+        log.info("%s samples, %s valid (%s valid lat/lon, %s valid distance, %s confirmed)",
+                  self.n_samples, self.n_valid, self.n_valid_latlon, self.n_valid_dist, self.n_confirmed)
 
         data = {"type": "FeatureCollection",
                 "features": self.features}
 
         os.makedirs(os.path.dirname(self.filename), exist_ok=True)
 
-        logging.info("writing GeoJSON file " + self.filename)
+        log.info("writing GeoJSON file %s", self.filename)
         with open(self.filename, 'w') as f:
             json.dump(data, f)
