@@ -261,7 +261,8 @@ class AnnotateMeasurements:
         elif self.zone_predictor:
             zone = self.zone_predictor.predict(way)
             way.tags["zone:traffic"] = zone
-            log.debug("Missing 'zone:traffic' tag  for way %s (%d) predicted from remaining tags as: %s", way.tags["name"] if "name" in way.tags else "unknown", way.way_id, zone)
+            log.debug("Missing 'zone:traffic' tag for way %s (%d) predicted from remaining tags as: %s",
+                      way.tags["name"] if "name" in way.tags else "unknown", way.way_id, zone)
 
         return zone
 

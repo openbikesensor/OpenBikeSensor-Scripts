@@ -60,10 +60,9 @@ class ZonePredictor:
             if load_classifier_from == "Germany.test":
                 load_classifier_from = os.path.join(os.path.dirname(__file__), "..", "..", "data", "face_zone_predictor",
                                                     "Germany.test.pickle")
+                self.load(load_classifier_from)
             else:
                 log.exception("invalid zone predictor: %s", load_classifier_from)
-                load_classifier_from = None
-            self.load(load_classifier_from)
 
     def predict(self, way):
         if self.classifier:
