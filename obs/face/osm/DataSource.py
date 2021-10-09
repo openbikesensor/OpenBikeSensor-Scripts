@@ -34,7 +34,7 @@ class DataSource:
         self.way_container = WayContainer()
 
         self.loaded_tiles = []
-        self.tile_source = TileSource()
+        self.tile_source = TileSource(use_overpass_state=True)
         self.tile_zoom = tile_zoom
 
     def ensure_coverage(self, lat, lon, extend=0.0):

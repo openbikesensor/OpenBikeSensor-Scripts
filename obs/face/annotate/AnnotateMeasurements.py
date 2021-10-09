@@ -18,15 +18,18 @@
 # <http://www.gnu.org/licenses/>.
 
 import numpy as np
-import datetime
+import logging
 
 from obs.face.mapping import Roads
 from .BeliefPropagationChain import BeliefPropagationChain as BP
+from .ZonePredictor import ZonePredictor
+
+log = logging.getLogger(__name__)
 
 
 class AnnotateMeasurements:
     def __init__(self, map_source, cache_dir='cache', osm_projection="filtered", fully_annotate_unconfirmed=False,
-                 point_way_tolerance=40.0):
+                 point_way_tolerance=40.0, zone_prediction=None):
         self.fully_annotate_unconfirmed = fully_annotate_unconfirmed
 
         self.map_source = map_source
@@ -39,6 +42,8 @@ class AnnotateMeasurements:
             self.add_osm_way_id = self.add_osm_way_id_filtered
         else:
             raise(ValueError("invalid value for osm_projection: " + osm_projection))
+
+        self.zone_predictor = ZonePredictor(load_classifier_from=zone_prediction)
 
     def annotate(self, measurements):
         # ensure that the relevant parts of the map is loaded
@@ -62,17 +67,11 @@ class AnnotateMeasurements:
         way_id = m["OSM_way_id"]
         way = self.map_source.get_way_by_id(way_id)
         if way_id is not None and way is not None:
-            tags = way.tags
-            if "zone:traffic" in tags:
-                zone = tags["zone:traffic"]
-                if zone == "DE:urban":
-                    zone = "urban"
-                elif zone == "DE:rural":
-                    zone = "rural"
-                elif zone == "DE:motorway":
-                    zone = "motorway"
+            zone = self.get_way_zone(way)
+            if zone:
                 m["OSM_zone"] = zone
 
+            tags = way.tags
             if "maxspeed" in tags:
                 m["OSM_maxspeed"] = tags["maxspeed"]
             if "name" in tags:
@@ -247,3 +246,22 @@ class AnnotateMeasurements:
             measurements_annotated.append(m)
 
         return measurements_annotated
+
+    def get_way_zone(self, way):
+        tags = way.tags
+        zone = None
+        if "zone:traffic" in tags:
+            zone = tags["zone:traffic"]
+            if zone == "DE:urban":
+                zone = "urban"
+            elif zone == "DE:rural":
+                zone = "rural"
+            elif zone == "DE:motorway":
+                zone = "motorway"
+        elif self.zone_predictor:
+            zone = self.zone_predictor.predict(way)
+            way.tags["zone:traffic"] = zone
+            log.debug("Missing 'zone:traffic' tag  for way %s (%d) predicted from remaining tags as: %s", way.tags["name"] if "name" in way.tags else "unknown", way.way_id, zone)
+
+        return zone
+

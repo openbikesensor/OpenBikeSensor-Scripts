@@ -19,3 +19,4 @@
 
 from .AnnotateMeasurements import AnnotateMeasurements
 from .BeliefPropagationChain import BeliefPropagationChain
+from .ZonePredictor import ZonePredictor

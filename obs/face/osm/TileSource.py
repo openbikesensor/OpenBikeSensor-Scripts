@@ -1,3 +1,5 @@
+import datetime
+
 import requests
 import numpy as np
 import logging
@@ -6,18 +8,26 @@ import os
 import pickle
 import time
 
+import re
+
 from obs.face.mapping.LocalMap import EquirectangularFast as LocalMap
 
 
 class TileSource:
-    def __init__(self, cache_dir='./cache', use_cache=True):
+    def __init__(self, cache_dir='./cache', use_cache=True, max_tries=3, use_overpass_state=False):
         self.overpass_url = "http://overpass-api.de/api/interpreter"
+        self.overpass_status_url = "http://overpass-api.de/api/status"
+
+        self.use_overpass_state = use_overpass_state
+
+        self.user_agent = 'OpenBikeSensor-FACE'
 
         self.query_template = dict()
 
         self.cache_dir = cache_dir
         self.use_cache = use_cache
 
+        self.max_tries = max_tries
         # [out:json]
         # [{{bbox}}];
         # (way["highway"~"primary|secondary"];>;);
@@ -28,28 +38,41 @@ class TileSource:
         (way({bbox[0]:},{bbox[1]:},{bbox[2]:},{bbox[3]:})["highway"~"trunk|primary|secondary|tertiary|unclassified|residential|trunk_link|primary_link|secondary_link|tertiary_link|living_street|service|track|road"];>;);
         out body;"""
 
-    def get_tile(self, zoom, x_tile, y_tile, filter_id="default"):
+        self.query_template["in_country_with_zone_traffic"] = """
+        [out:json];
+        area["boundary"="administrative"]["admin_level"="2"]["name"="{country_name}"];
+        (way["highway"~"trunk|primary|secondary|tertiary|unclassified|residential|trunk_link|primary_link|secondary_link|tertiary_link|living_street|service|track|road"]["zone:traffic"]({bbox[0]:},{bbox[1]:},{bbox[2]:},{bbox[3]:})(area);>;);
+        out body;"""
+
+    def get_tile(self, zoom, x_tile, y_tile, filter_id="default", country_name=None):
         logging.debug("tile requested: zoom=%d, x=%d, y=%d, filter_id=%s", zoom, x_tile, y_tile, filter_id)
 
         # try to read from cache
-        filename_cache = os.path.join(self.cache_dir, 'TileSource', filter_id, str(zoom), str(x_tile), str(y_tile), 'tile.pickle')
+        if country_name:
+            filename_cache = os.path.join(self.cache_dir, 'TileSource', filter_id, country_name, str(zoom),
+                                          str(x_tile), str(y_tile), 'tile.pickle')
+        else:
+            filename_cache = os.path.join(self.cache_dir, 'TileSource', filter_id, str(zoom), str(x_tile), str(y_tile),
+                                          'tile.pickle')
+
+        nodes, ways, relations = None, None, None
+
         request_tile = True
         if self.use_cache and os.path.isfile(filename_cache):
             logging.debug("loading tile cached in %s", filename_cache)
             request_tile = False
             try:
                 with open(filename_cache, 'rb') as infile:
-                    # data = jsons.loads(infile.read())
                     data = pickle.load(infile)
                 nodes, ways, relations = data["nodes"], data["ways"], data["relations"]
             except IOError as e:
                 logging.debug("loading tile %s failed", filename_cache)
                 request_tile = True
 
-        # try to retrieve from server
+                # try to retrieve from server
         if request_tile:
             # request from OSM server
-            response = self.request_tile(zoom, x_tile, y_tile, filter_id)
+            response = self.request_tile(zoom, x_tile, y_tile, filter_id, country_name=country_name)
 
             # convert to nodes and ways
             nodes, ways, relations = self.convert_to_dict(response)
@@ -65,23 +88,32 @@ class TileSource:
 
         return nodes, ways, relations
 
-    def request_tile(self, zoom, x_tile, y_tile, filter_id="default"):
+    def request_tile(self, zoom, x_tile, y_tile, filter_id="default", country_name=""):
         # construct the query
-        parameters = {"bbox": self.get_tile_bounding_box(zoom, x_tile, y_tile)}
+        parameters = {"bbox": self.get_tile_bounding_box(zoom, x_tile, y_tile), "country_name": country_name}
         query = self.query_template[filter_id].format(**parameters)
 
         success = False
-        for try_count in range(3):
+        for try_count in range(self.max_tries):
+            if self.use_overpass_state:
+                status = self.query_overpass_status()
+                dt = status["slots_available_after"][0]
+            else:
+                dt = try_count * 3
+            if dt > 0:
+                logging.debug("idling %f seconds", dt)
+                time.sleep(dt)
+
             # send query and receive answer
             response = requests.get(self.overpass_url,
-                                    params={'data': query})
+                                    params={'data': query},
+                                    headers={"User-Agent": self.user_agent})
 
             if response.status_code == 200:
                 success = True
                 break
 
             logging.warning('could not retrieve tile, server returned %s (%d)', response.reason, response.status_code)
-            time.sleep((try_count+1) * 3)
 
         if success:
             # decode to JSON
@@ -132,6 +164,38 @@ class TileSource:
                             tiles.add((zoom, x, y))
 
         return tiles
+
+    def query_overpass_status(self):
+        response = requests.get(self.overpass_status_url,
+                                headers={"User-Agent": self.user_agent})
+
+        # r = re.compile(
+        #    "Connected as: ([^\n]+)\nCurrent time: ([^\n]+)\nRate limit: ([^\n]+)\n(\d+) slots available (now)|after [^,]+, in (\d+) seconds.")
+
+        lines = response.text.split("\n")
+
+        r1 = re.compile(r"(\d+) slots available now.")
+        r2 = re.compile(r"Slot available after: [^,]+, in (\d+) seconds.")
+
+        m1 = r1.match(lines[3])
+        if m1:
+            i0 = 4
+            n = int(m1.group(1))
+            t = [0.0] * n
+        else:
+            i0 = 3
+            t = []
+
+        for i in range(i0, len(lines) - 1):
+            m2 = r2.match(lines[i])
+            if m2:
+                t.append(float(m2.group(1)))
+
+        status = {
+            "slots_available_after": t
+        }
+
+        return status
 
     @staticmethod
     def latlon2tile(zoom, lat_deg, lon_deg):

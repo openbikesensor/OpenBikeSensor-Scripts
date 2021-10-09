@@ -76,11 +76,11 @@ def collect_datasets(path, exclusion_list):
 
 
 def process_datasets(datasets, path_annotated, osm, skip_if_json_exists=True, path_cache='./cache',
-                     n_worker_processes=1, process_parallel=True, right_hand_traffic=True):
-
+                     n_worker_processes=1, process_parallel=True, right_hand_traffic=True,
+                     zone_prediction=None):
     log.info("annotating datasets")
 
-    annotator = AnnotateMeasurements(osm, cache_dir=path_cache)
+    annotator = AnnotateMeasurements(osm, cache_dir=path_cache, zone_prediction=zone_prediction)
     measurement_filter = MeasurementFilter()
     importer = ImportMeasurementsCsv(right_hand_traffic=right_hand_traffic)
 
@@ -132,9 +132,9 @@ def process_datasets(datasets, path_annotated, osm, skip_if_json_exists=True, pa
             output_queue_size = "N/A"
 
         log.debug("datasets: total %s, input queue %s, output queue %s, "
-                "finished %s (%s measurements); worker: running %s, total %s",
-                n_in, input_queue_size, output_queue_size, n_out,
-                len(measurements), n_alive, len(processes))
+                  "finished %s (%s measurements); worker: running %s, total %s",
+                  n_in, input_queue_size, output_queue_size, n_out,
+                  len(measurements), n_alive, len(processes))
 
         if process_parallel:
             # (re)spawn processes
@@ -301,23 +301,32 @@ def main():
     parser.add_argument('--recompute', required=False, action='store_true', default=False,
                         help='always recompute annotation results')
 
-    parser.add_argument('--anonymize-user-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
-                        help='Choose whether to "remove" user ID (default), store only "hashed" versions (requires --anonymization-hash-salt) or "keep" '
-                        'the full user ID in outputs.')
+    parser.add_argument('--anonymize-user-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE,
+                        metavar='remove|hashed|keep',
+                        help='Choose whether to "remove" user ID (default), store only "hashed" versions (requires '
+                             '--anonymization-hash-salt) or "keep" '
+                             'the full user ID in outputs.')
 
-    parser.add_argument('--anonymize-measurement-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
-                        help='Choose whether to "remove" measurement ID, store only "hashed" versions (requires --anonymization-hash-salt) or "keep" '
-                        'the full measurement ID in outputs.')
+    parser.add_argument('--anonymize-measurement-id', action='store', type=AnonymizationMode,
+                        default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
+                        help='Choose whether to "remove" measurement ID, store only "hashed" versions (requires '
+                             '--anonymization-hash-salt) or "keep" '
+                             'the full measurement ID in outputs.')
 
     parser.add_argument('--anonymization-hash-salt', action='store', type=str,
-                        help='A salt/seed for use when hashing user or measurement IDs. Arbitrary string, but kept secret.')
+                        help='A salt/seed for use when hashing user or measurement IDs. Arbitrary string, but kept '
+                             'secret.')
+
+    parser.add_argument('--zone-prediction', action='store', type=str, default="none",
+                        help="Chooses method to derive for each way the zone (rural/urban) it belongs to if the "
+                             "zone:traffic tag is not set. Can be 'none' (default, do not use) or 'Germany.test'")
 
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose')
 
     args = parser.parse_args()
 
     coloredlogs.install(level=logging.DEBUG if args.verbose else logging.INFO,
-        fmt="%(asctime)s %(name)s %(levelname)s %(message)s")
+                        fmt="%(asctime)s %(name)s %(levelname)s %(message)s")
 
     if args.base_path is not None:
         if args.input is None:
@@ -369,7 +378,8 @@ def main():
                                                     path_cache=args.path_cache,
                                                     skip_if_json_exists=not args.recompute,
                                                     n_worker_processes=args.parallel,
-                                                    process_parallel=args.parallel > 0)
+                                                    process_parallel=args.parallel > 0,
+                                                    zone_prediction=args.zone_prediction)
 
         log.info("Statistics:")
         log.info("number of files:        %s", statistics["n_files"])
@@ -406,7 +416,6 @@ def main():
             log.error('--output-geojson-roads or --base-path required')
             sys.exit(1)
 
-
         log.info("exporting visualization data")
 
         with open(args.path_output_collected, 'r') as infile:
@@ -418,7 +427,7 @@ def main():
             user_id_mode=args.anonymize_user_id,
             measurement_id_mode=args.anonymize_measurement_id,
             hash_salt=args.anonymization_hash_salt,
-          ).filter(measurements)
+        ).filter(measurements)
 
         log.info("exporting GeoJson measurements")
         exporter = ExportMeasurements(args.output_geojson_measurements, do_filter=True)
@@ -426,7 +435,8 @@ def main():
         exporter.finalize()
 
         log.info("exporting GoeJson roads")
-        exporter = ExportRoadAnnotation(args.output_geojson_roads, map_source, right_hand_traffic=args.right_hand_traffic)
+        exporter = ExportRoadAnnotation(args.output_geojson_roads, map_source,
+                                        right_hand_traffic=args.right_hand_traffic)
         exporter.add_measurements(measurements)
         exporter.finalize()
 
