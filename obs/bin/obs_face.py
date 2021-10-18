@@ -416,7 +416,8 @@ def main():
                                                     path_cache=args.path_cache,
                                                     skip_if_json_exists=not args.recompute,
                                                     n_worker_processes=args.parallel,
-                                                    process_parallel=args.parallel > 0)
+                                                    process_parallel=args.parallel > 0,
+                                                    zone_prediction=args.zone_prediction)
 
         log.info("Statistics:")
         log.info("number of files:        %s", statistics["n_files"])
