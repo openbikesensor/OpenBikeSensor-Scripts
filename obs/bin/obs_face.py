@@ -32,7 +32,7 @@ import coloredlogs
 
 from obs.face.importer import ImportMeasurementsCsv
 from obs.face.annotate import AnnotateMeasurements
-from obs.face.filter import MeasurementFilter
+from obs.face.filter import RequiredFieldsFilter, ChainFilter, DistanceMeasuredFilter
 from obs.face.geojson import ExportMeasurements, ExportRoadAnnotation
 from obs.face.osm import DataSource as OSMDataSource
 from obs.face.filter import PrivacyFilter, AnonymizationMode
@@ -81,7 +81,11 @@ def process_datasets(datasets, path_annotated, osm, skip_if_json_exists=True, pa
     log.info("annotating datasets")
 
     annotator = AnnotateMeasurements(osm, cache_dir=path_cache, zone_prediction=zone_prediction)
-    measurement_filter = MeasurementFilter()
+    measurement_filter = ChainFilter(
+        RequiredFieldsFilter(),
+        DistanceMeasuredFilter(),
+    )
+
     importer = ImportMeasurementsCsv(right_hand_traffic=right_hand_traffic)
 
     input_queue = Queue()
@@ -132,9 +136,9 @@ def process_datasets(datasets, path_annotated, osm, skip_if_json_exists=True, pa
             output_queue_size = "N/A"
 
         log.debug("datasets: total %s, input queue %s, output queue %s, "
-                  "finished %s (%s measurements); worker: running %s, total %s",
-                  n_in, input_queue_size, output_queue_size, n_out,
-                  len(measurements), n_alive, len(processes))
+                "finished %s (%s measurements); worker: running %s, total %s",
+                n_in, input_queue_size, output_queue_size, n_out,
+                len(measurements), n_alive, len(processes))
 
         if process_parallel:
             # (re)spawn processes
@@ -185,6 +189,15 @@ def combine_statistics(a, b):
     return stats
 
 
+class PrefixLogFilter:
+    def __init__(self, prefix):
+        self.prefix = prefix
+
+    def filter(self, record):
+        record.msg = self.prefix + record.msg
+        return True
+
+
 class AnnotationProcess(Process):
     def __init__(self, process_id, job_queue, result_queue, importer, annotator, measurement_filter, path_annotated,
                  skip_if_json_exists):
@@ -230,29 +243,55 @@ class AnnotationProcess(Process):
                 log.debug("[%s] cached result in %s is outdated, recomputing ", self.process_name, filename_json)
 
         if do_annotate:
-            filename_log = os.path.join(self.path_annotated,
-                                        os.path.splitext(dataset["filename_relative"])[0] + '.log')
+            filename_log = os.path.join(
+                self.path_annotated,
+                os.path.splitext(dataset["filename_relative"])[0] + ".log",
+            )
 
             os.makedirs(os.path.dirname(filename_log), exist_ok=True)
-            with open(filename_log, "w") as logfile:
-                try:
-                    measurements, statistics = self.importer.read(dataset["filename"], user_id=dataset["user_id"],
-                                                                  dataset_id=dataset["filename_relative"],
-                                                                  log=logfile)
-                    measurements = self.annotator.annotate(measurements)
 
-                    measurements = self.measurement_filter.filter(measurements, log=logfile)
+            # Create a per-file logger
+            file_log = logging.Logger(name=dataset["filename_relative"])
+            file_log.addHandler(logging.FileHandler(filename_log, mode="w"))
+            stream_handler = logging.StreamHandler(sys.stderr)
+            stream_handler.setLevel(logging.WARNING)
+            file_log.addHandler(stream_handler)
+            file_log.addFilter(PrefixLogFilter(dataset["filename_relative"] + ": "))
+            file_log.parent = log
+            file_log.setLevel(logging.WARNING)
 
-                    dataset_annotated = {"measurements": measurements, "statistics": statistics}
-                    # write out
-                    os.makedirs(os.path.dirname(filename_json), exist_ok=True)
-                    with open(filename_json, 'w') as outfile:
-                        outfile.write(jsons.dumps(dataset_annotated))
-                    log.debug("[%s] wrote annotated results to %s", self.process_name, filename_json)
+            try:
+                measurements, statistics = self.importer.read(
+                    dataset["filename"],
+                    user_id=dataset["user_id"],
+                    dataset_id=dataset["filename_relative"],
+                    log=file_log,
+                )
+                measurements = self.annotator.annotate(measurements)
 
-                except (ValueError, IOError):
-                    log.exception("[%s] Annotation failed with error", self.process_name)
-                    dataset_annotated = None
+                measurements = self.measurement_filter.filter(
+                    measurements, log=file_log
+                )
+
+                dataset_annotated = {
+                    "measurements": measurements,
+                    "statistics": statistics,
+                }
+                # write out
+                os.makedirs(os.path.dirname(filename_json), exist_ok=True)
+                with open(filename_json, "w") as outfile:
+                    outfile.write(jsons.dumps(dataset_annotated))
+                file_log.debug(
+                    "[%s] wrote annotated results to %s",
+                    self.process_name,
+                    filename_json,
+                )
+
+            except (ValueError, IOError) as e:
+                file_log.error(
+                    "[%s] Annotation failed with error: %s", self.process_name, str(e)
+                )
+                dataset_annotated = None
 
         return dataset_annotated
 
@@ -304,17 +343,13 @@ def main():
     parser.add_argument('--recompute', required=False, action='store_true', default=False,
                         help='always recompute annotation results')
 
-    parser.add_argument('--anonymize-user-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE,
-                        metavar='remove|hashed|keep',
-                        help='Choose whether to "remove" user ID (default), store only "hashed" versions (requires '
-                             '--anonymization-hash-salt) or "keep" '
-                             'the full user ID in outputs.')
+    parser.add_argument('--anonymize-user-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
+                        help='Choose whether to "remove" user ID (default), store only "hashed" versions (requires --anonymization-hash-salt) or "keep" '
+                        'the full user ID in outputs.')
 
-    parser.add_argument('--anonymize-measurement-id', action='store', type=AnonymizationMode,
-                        default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
-                        help='Choose whether to "remove" measurement ID, store only "hashed" versions (requires '
-                             '--anonymization-hash-salt) or "keep" '
-                             'the full measurement ID in outputs.')
+    parser.add_argument('--anonymize-measurement-id', action='store', type=AnonymizationMode, default=AnonymizationMode.REMOVE, metavar='remove|hashed|keep',
+                        help='Choose whether to "remove" measurement ID, store only "hashed" versions (requires --anonymization-hash-salt) or "keep" '
+                        'the full measurement ID in outputs.')
 
     parser.add_argument('--anonymization-hash-salt', action='store', type=str,
                         help='A salt/seed for use when hashing user or measurement IDs. Arbitrary string, but kept '
@@ -329,7 +364,7 @@ def main():
     args = parser.parse_args()
 
     coloredlogs.install(level=logging.DEBUG if args.verbose else logging.INFO,
-                        fmt="%(asctime)s %(name)s %(levelname)s %(message)s")
+        fmt="%(asctime)s %(name)s %(levelname)s %(message)s")
 
     if args.base_path is not None:
         if args.input is None:
@@ -381,8 +416,7 @@ def main():
                                                     path_cache=args.path_cache,
                                                     skip_if_json_exists=not args.recompute,
                                                     n_worker_processes=args.parallel,
-                                                    process_parallel=args.parallel > 0,
-                                                    zone_prediction=args.zone_prediction)
+                                                    process_parallel=args.parallel > 0)
 
         log.info("Statistics:")
         log.info("number of files:        %s", statistics["n_files"])
@@ -419,6 +453,7 @@ def main():
             log.error('--output-geojson-roads or --base-path required')
             sys.exit(1)
 
+
         log.info("exporting visualization data")
 
         with open(args.path_output_collected, 'r') as infile:
@@ -430,7 +465,7 @@ def main():
             user_id_mode=args.anonymize_user_id,
             measurement_id_mode=args.anonymize_measurement_id,
             hash_salt=args.anonymization_hash_salt,
-        ).filter(measurements)
+          ).filter(measurements)
 
         log.info("exporting GeoJson measurements")
         exporter = ExportMeasurements(args.output_geojson_measurements, do_filter=True)
@@ -438,8 +473,7 @@ def main():
         exporter.finalize()
 
         log.info("exporting GoeJson roads")
-        exporter = ExportRoadAnnotation(args.output_geojson_roads, map_source,
-                                        right_hand_traffic=args.right_hand_traffic)
+        exporter = ExportRoadAnnotation(args.output_geojson_roads, map_source, right_hand_traffic=args.right_hand_traffic)
         exporter.add_measurements(measurements)
         exporter.finalize()
 

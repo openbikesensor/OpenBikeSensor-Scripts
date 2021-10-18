@@ -10,6 +10,7 @@ memoization==0.3.2
 coloredlogs==15.0
 httpx==0.17.1
 gpstime==0.4.6
+geopy==2.2.0
 
 obs~=0.0.1
 scikit-learn~=0.24.2
