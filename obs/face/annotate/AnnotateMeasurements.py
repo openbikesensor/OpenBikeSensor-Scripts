@@ -65,11 +65,11 @@ class AnnotateMeasurements:
             tags = way.tags
             if "zone:traffic" in tags:
                 zone = tags["zone:traffic"]
-                if zone == "DE:urban":
+                if zone.lower() == "de:urban":
                     zone = "urban"
-                elif zone == "DE:rural":
+                elif zone.lower() == "de:rural":
                     zone = "rural"
-                elif zone == "DE:motorway":
+                elif zone.lower() == "de:motorway":
                     zone = "motorway"
                 m["OSM_zone"] = zone
 
