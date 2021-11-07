@@ -10,7 +10,7 @@ Clone the script repository
 
 and go to the visualization subdirectory
 
- `cd OpenBikeSensor-Scripts/OBS-FACE-Visualization`.
+ `cd OpenBikeSensor-Scripts/visualization`.
 
 Create a subdirectory `json` and copy the GeoJson files resulting from running  [OpenBikeSensor FACE script](https://github.com/openbikesensor/OpenBikeSensor-Scripts/blob/main/docs/obs-face.md) (by default `./data/visualization/*.json`) there. 
 

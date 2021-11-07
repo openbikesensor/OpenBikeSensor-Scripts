@@ -21,6 +21,19 @@ automatically refer to the new version when calling the command line scripts.
 pip install -e .
 ```
 
+If you have both, Python 3 und Python 2, on your machine, then you must run:
+
+```
+pip3 install -e .
+```
+
+This installs the following scripts into `~/.local/bin`:
+
+* `obs-face`
+* `obs-filter-privacy`
+* `obs-process-track` 
+* `obs-provision`
+
 If you update the source code and some imports to libraries do not work, simply
 re-running the above command should install them. For a non-development
 installation, omit the `-e`. Other pip options can be used as normal.
@@ -35,7 +48,9 @@ documentation files for details on how to use them.
 * **[obs-filter-privacy](./docs/obs-filter-privacy.md)**, a small utility for
   anonymization of a CSV file that removes measurments that are inside privacy
   zones
-  
+
+Additonally, this repository [contains static websites](./visualization), which 
+can be used to visualizes the JSON-output of the obs-face script in a map overlay.
   
 ## License
   
