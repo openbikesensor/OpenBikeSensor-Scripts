@@ -35,19 +35,9 @@ class Way:
         # direction
         dx = np.diff(x)
         dy = np.diff(y)
-        direction = np.arctan2(dy, dx)
+        self.direction = np.arctan2(dy, dx)
 
-        # determine if way is directed, and which is the "forward" direction
-        directional = self.get_way_directionality(way)
-        if directional == 1:
-            self.is_directional = True
-            self.direction = direction
-        elif directional == -1:
-            self.is_directional = True
-            self.direction = (direction + math.pi) % (2*math.pi)
-        else:
-            self.is_directional = False
-            self.direction = direction
+        self.directionality_bicycle, self.directionality_motorized = self.get_way_directionality(way)
 
     def get_axis_aligned_bounding_box(self):
         return self.a, self.b
@@ -79,16 +69,24 @@ class Way:
 
         # also check deviation from way direction
         direction_best = self.direction[i_best - 1]
-        d0 = self.distance_periodic(direction_sample, direction_best)
-        if self.is_directional:
-            dist_direction_best = d0
+        if self.directionality_bicycle == +1:
+            # way is direction-bound for bicyclist, and follows the way direction
+            dist_direction_best = self.distance_periodic(direction_sample, direction_best)
             way_orientation = +1
+        elif self.directionality_bicycle == -1:
+            # way is direction-bound for bicyclist, and follows the reverse way direction
+            dist_direction_best = self.distance_periodic(direction_sample + math.pi, direction_best)
+            way_orientation = -1
         else:
+            # way is not direction-bound for bicyclist, so both directions are OK
+            d0 = self.distance_periodic(direction_sample, direction_best)
             d180 = self.distance_periodic(direction_sample + math.pi, direction_best)
             if d0 <= d180:
+                # we go along the way direction
                 way_orientation = +1
                 dist_direction_best = d0
             else:
+                # we go along the reverse way direction
                 way_orientation = -1
                 dist_direction_best = d180
 
@@ -155,14 +153,35 @@ class Way:
 
     @staticmethod
     def get_way_directionality(way):
-        if "tags" in way and "oneway" in way["tags"]:
-            v = way["tags"]["oneway"]
+        if "tags" not in way:
+            return 0, 0
+        tags = way["tags"]
+
+        d_motorized = 0
+
+        # roundabouts imply a one-way street
+        if "junction" in tags and tags["junction"] == "roundabout":
+            d_motorized = 1
+
+        # derive motorized directionality
+        if "oneway" in tags:
+            v = tags["oneway"]
             if v in ["yes", "true", "1"]:
-                v = +1
+                d_motorized = +1
             elif v in ["no", "false", "0"]:
-                v = 0
+                d_motorized = 0
             elif v in ["-1", "reverse"]:
-                v = -1
-        else:
-            v = 0
-        return v
+                d_motorized = -1
+
+        # derive bicycle directionality
+        d_bicycle = d_motorized
+        if "oneway:bicycle" in tags:
+            v = tags["oneway:bicycle"]
+            if v in ["yes", "true", "1"]:
+                d_bicycle = +1
+            elif v in ["no", "false", "0"]:
+                d_bicycle = 0
+            elif v in ["-1", "reverse"]:
+                d_bicycle = -1
+
+        return d_bicycle, d_motorized
