@@ -36,6 +36,10 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			z-index: 0;
 		}
 
+		.bw {
+		    filter: greyscale(100%) opacity(50%);
+		}
+
 		.overlay {
 			display: flex;
 			flex-direction: column;
@@ -346,10 +350,10 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			target: 'map',
 			layers: [
 				new ol.layer.Tile({
+				    className: "bw",
 					source: new ol.source.OSM({
-						url: 'https://tiles.wmflabs.org/bw-mapnik/{z}/{x}/{y}.png',
-						crossOrigin: null
-						// url: 'https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+						crossOrigin: null,
+						url: 'https://{a-c}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 					})
 				})
 			],
