@@ -68,6 +68,7 @@ class PrivacyFilter(MeasurementFilter):
             "OSM_oneway",
             "OSM_lanes",
             "OSM_highway",
+            "OSM_ban_on_car_passing_bike"
         ]
         # 'in_privacy_zone',  'discontinuity',
 

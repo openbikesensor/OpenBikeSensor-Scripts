@@ -84,6 +84,10 @@ class AnnotateMeasurements:
             if "highway" in tags:
                 m["OSM_highway"] = tags["highway"]
 
+            if "traffic_sign" in tags:
+                if tags["traffic_sign"] == "DE:277.1":
+                    m["OSM_ban_on_car_passing_bike"] = True
+
         return m
 
     def add_osm_way_id_greedy(self, measurements):
