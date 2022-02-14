@@ -45,6 +45,16 @@ class Way:
     def axis_aligned_bounding_boxes_overlap(self, a, b):
         return np.all(self.a < b) and np.all(a < self.b)
 
+    def compute_length(self):
+        p_prev = None
+        length = 0.0
+        for p in self.points_xy:
+            if p_prev is not None:
+                length += np.linalg.norm(p - p_prev)
+            p_prev = p
+
+        return length
+
     def distance_of_point(self, lat_lon, direction_sample):
         # transfer lat_lon to local coordinate system
         xy = np.array(self.local_map.transfer_to(lat_lon[0], lat_lon[1]))

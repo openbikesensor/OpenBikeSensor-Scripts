@@ -22,59 +22,207 @@ import os
 import numpy as np
 import logging
 
-from obs.face.mapping import AzimuthalEquidistant as LocalMap
+from obs.face.mapping import EquirectangularFast as LocalMap
 
 log = logging.getLogger(__name__)
 
 
 class ExportRoadAnnotation:
-    def __init__(self, filename, map_source, right_hand_traffic=True):
+    def __init__(self, filename, map_source, right_hand_traffic=True, compute_usage_stats=False,
+                 point_way_tolerance=40.0, only_ways_with_overtake_events=True):
         self.filename = filename
         self.map_source = map_source
         self.features = None
         self.n_samples = 0
         self.n_valid = 0
-        self.n_grouped = 0
+        self.n_confirmed = 0
         self.way_statistics = {}
-        self.only_confirmed_measurements = True
         self.right_hand_traffic = right_hand_traffic
+        self.compute_usage_stats = compute_usage_stats
+        self.point_way_tolerance = point_way_tolerance
+        self.only_ways_with_overtake_events = only_ways_with_overtake_events
 
     def add_measurements(self, measurements):
+        t_prev, lat_prev, lon_prev = None, None, None
+        valid_prev, way_id_prev, way_orientation_prev = False, None, None
+        segment_t, segment_d, segment_valid = 0.0, 0.0, False
+        local_map = None
+        confirmed = None
+        way_orientation = None
+        way_id = None
+        way_stats = None
+
+        for i, sample in enumerate(measurements):
+            last_sample = i == len(measurements) - 1
+
+            self.n_samples += 1
+
+            # check if this is a valid data point
+            if sample["time"] is not None and sample["latitude"] is None or sample["longitude"] is not None and sample["has_OSM_annotations"]:
+                way_id = sample["OSM_way_id"]
+                if way_id is not None:
+                    valid = True
+                    continuous = valid_prev and way_id_prev == way_id
+                    way_orientation = sample["OSM_way_orientation"]
+                    confirmed = sample["confirmed"]
+                    self.n_valid += 1
+                else:
+                    valid = False
+                    continuous = False
+            else:
+                valid = False
+                continuous = False
+
+            # ensure map coverage
+            if valid:
+                self.map_source.ensure_coverage([sample["latitude"]], [sample["longitude"]],
+                                                extend=self.point_way_tolerance)
+
+            # get or create way statistics object
+            if valid and not continuous:
+                way = self.map_source.get_way_by_id(way_id)
+                if way_id in self.way_statistics:
+                    # way stats object exists, just get it
+                    way_stats = self.way_statistics[way_id]
+                else:
+                    # way stats object does not yet exist
+                    if way is not None:
+                        # OSM way exists, so create it
+                        way_stats = WayStatistics(way_id, way)
+                        self.way_statistics[way_id] = way_stats
+                    else:
+                        # OSM way not found -> this should not happen
+                        way_stats = None
+                        valid = False
+                        logging.warning("way not found in map")
+                local_map = way.local_map if way is not None else None
+
+            # store overtake value for a confirmed and valid point
+            if valid and confirmed:
+                self.n_confirmed += 1
+                value = sample["distance_overtaker"]
+                way_stats.add_overtake_sample(value, way_orientation)
+
+            # get time and position if this is a valid point
+            if valid:
+                t, lat, lon = sample["time"], sample["latitude"], sample["longitude"]
+
+            # accumulate time and distance if we are on a continuous segment
+            if continuous:
+                # accumulate
+                segment_t += (t - t_prev).total_seconds()
+                segment_d += local_map.distance_lat_lon(lat, lon, lat_prev, lon_prev)
+                segment_valid = True
+
+            # store segment
+            if (not continuous or last_sample) and segment_valid:
+                self.way_statistics[way_id_prev].add_usage(segment_t, segment_d, way_orientation)
+
+            # reset segment
+            if not continuous:
+                segment_t, segment_d, segment_valid = 0.0, 0.0, False
+
+            # keep old values
+            if valid:
+                lat_prev, lon_prev, t_prev = lat, lon, t
+                way_id_prev, way_orientation_prev = way_id, way_orientation
+
+            valid_prev = valid
+
+    def add_measurements_old(self, measurements):
+        t_prev, lat_prev, lon_prev = None, None, None
+        way_id_prev, way_orientation_prev = None, None
+        segment_t, segment_d = 0.0, 0.0
+        local_map = None
+
         for sample in measurements:
             self.n_samples += 1
             # filter measurements
-            if sample["latitude"] is None or sample["longitude"] is None or sample["distance_overtaker"] is None \
-                    or self.only_confirmed_measurements and (sample["confirmed"] is not True) \
-                    or not sample["has_OSM_annotations"]:
+            if sample["latitude"] is None or sample["longitude"] is None:
+                lat_prev, lon_prev = None, None
                 continue
+
+            # we have valid coordinates
+            lat, lon = sample["latitude"], sample["longitude"]
+            t = sample["time"]
+
+            if way_id_prev is None:
+                delta_t, delta_d = 0.0, 0.0
+            else:
+                # if necessary, create a local map
+                if local_map is None:
+                    local_map = LocalMap(lat, lon)
+
+                delta_t = (t - t_prev).total_seconds()
+                delta_d = local_map.distance_lat_lon(lat, lon, lat_prev, lon_prev)
+
+            # accumulate distance and timr
+            segment_d += delta_d
+            segment_t += delta_t
+
+            # store previous positions and time
+            lat_prev, lon_prev, t_prev = lat, lon, t
 
             self.n_valid += 1
 
-            way_id = sample["OSM_way_id"]
-            value = sample["distance_overtaker"]
-            way_orientation = sample["OSM_way_orientation"]
-
-            self.map_source.ensure_coverage([sample["latitude"]], [sample["longitude"]])
-
-            if way_id in self.way_statistics:
-                # way statistic object already created
-                self.way_statistics[way_id].add_sample(value, way_orientation)
-                self.n_grouped += 1
+            if sample["has_OSM_annotations"]:
+                way_id = sample["OSM_way_id"]
+                way_orientation = sample["OSM_way_orientation"]
             else:
-                way = self.map_source.get_way_by_id(way_id)
-                if way:
-                    # statistic object not created, but OSM way exists
-                    self.way_statistics[way_id] = WayStatistics(way_id, way).add_sample(value, way_orientation)
-                    self.n_grouped += 1
+                way_id = None
+                way_orientation = None
+
+            value = sample["distance_overtaker"]
+            confirmed = sample["confirmed"]
+
+            self.map_source.ensure_coverage([sample["latitude"]], [sample["longitude"]], extend=self.point_way_tolerance)
+
+            way = None
+            way_stats = None
+            if way_id is not None:
+                if way_id in self.way_statistics:
+                    way_stats = self.way_statistics[way_id]
                 else:
-                    logging.warning("way not found in map")
+                    way = self.map_source.get_way_by_id(way_id)
+                    if way:
+                        # statistic object not created, but OSM way exists
+                        way_stats = WayStatistics(way_id, way)
+                        self.way_statistics[way_id] = way_stats
+                    else:
+                        logging.warning("way not found in map")
+
+            if way_stats is not None and confirmed:
+                way_stats.add_overtake_sample(value, way_orientation)
+                self.n_confirmed += 1
+
+            if not way_id == way_id_prev:
+                # we found a way id change
+                if way_id_prev is not None:
+                    # store time and distance to previous way stats
+                    self.way_statistics[way_id_prev].add_usage(segment_t - delta_t*0.5, segment_d - delta_d*0.5, way_orientation)
+                if way_id is not None:
+                    # update the local map
+                    if way is None:
+                        way = self.map_source.get_way_by_id(way_id)
+                    local_map = way.local_map
+
+                # reset the counting of distance and time
+                segment_t, segment_d = delta_t*0.5, delta_d*0.5
+
+                # also store way and orientation as previous
+                way_id_prev, way_orientation_prev = way_id, way_orientation
+
+        # also store the last part of the track
+        if way_id_prev is not None:
+            # store time and distance to previous way stats
+            self.way_statistics[way_id_prev].add_usage(segment_t, segment_d, way_orientation_prev)
 
     def finalize(self):
-        log.info("%s samples, %s valid", self.n_samples, self.n_valid)
+        log.info("%d samples, %d valid, %d confirmed", self.n_samples, self.n_valid, self.n_confirmed)
         features = []
         for way_stats in self.way_statistics.values():
             way_stats.finalize()
-            if not any(way_stats.valid):
+            if self.only_ways_with_overtake_events and not any(way_stats.valid):
                 continue
 
             for i in range(1 if way_stats.oneway else 2):
@@ -104,6 +252,9 @@ class ExportRoadAnnotation:
                                           "name": way_stats.name,
                                           "way_id": way_stats.way_id,
                                           "valid": way_stats.valid[i],
+                                          "way_length": way_stats.length,
+                                          "usage_distance_total": way_stats.usage_distance_total[i],
+                                          "usage_time_total": way_stats.usage_time_total[i],
                                           },
                            "geometry": {"type": "LineString", "coordinates": coordinates}}
 
@@ -127,9 +278,13 @@ class WayStatistics:
 
         self.way_id = way_id
         self.valid = [False, False]
-        self.d_mean = [0, 0]
-        self.d_median = [0, 0]
-        self.d_minimum = [0, 0]
+        self.d_mean = [None, None]
+        self.d_median = [None, None]
+        self.d_minimum = [None, None]
+
+        self.length = way.compute_length()
+        self.usage_time_total = [0.0, 0.0]
+        self.usage_distance_total = [0.0, 0.0]
 
         self.zone = "unknown"
         self.oneway = False
@@ -154,11 +309,15 @@ class WayStatistics:
 
         self.d_limit = 1.5 if self.zone == "urban" else 2.0 if self.zone == "rural" else 1.5
 
-    def add_sample(self, sample, orientation):
-        if np.isfinite(sample):
+    def add_overtake_sample(self, sample, orientation):
+        if sample is not None and np.isfinite(sample):
             i = 1 if orientation == -1 else 0
             self.samples[i].append(sample)
-        return self
+
+    def add_usage(self, delta_t, delta_d, orientation):
+        i = 1 if orientation == -1 else 0
+        self.usage_time_total[i] += delta_t
+        self.usage_distance_total[i] += delta_d
 
     def finalize(self):
         for i in range(2):
@@ -172,3 +331,4 @@ class WayStatistics:
                     self.n_lt_limit[i] = int((samples < self.d_limit).sum())
                     self.n_geq_limit[i] = int((samples >= self.d_limit).sum())
                 self.valid[i] = True
+

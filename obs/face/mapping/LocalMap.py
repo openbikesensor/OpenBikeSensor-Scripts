@@ -311,6 +311,10 @@ class EquirectangularFast:
 
         return lat, lon
 
+    def distance_lat_lon(self, lat_p, lon_p, lat_q, lon_q):
+        d = np.array([self.lat_a * (lat_p - lat_q), self.lon_a * (lon_p - lon_q)])
+        return np.linalg.norm(d)
+
     @staticmethod
     def get_scale_at(lat, lon):
         s_lat = 360.0 / 40000e3

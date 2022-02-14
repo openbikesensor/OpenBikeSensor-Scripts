@@ -24,6 +24,7 @@ import math
 
 log = logging.getLogger(__name__)
 
+
 class ExportMeasurements:
     def __init__(self, filename, do_filter=True):
         self.filename = filename

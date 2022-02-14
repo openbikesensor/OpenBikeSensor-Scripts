@@ -138,6 +138,7 @@ updates are ignored until the cache is flushed by deleting all files in the
 --left-hand-traffic   switches to left-hand traffic (otherwise: right-hand
                       traffic); right instead left sensor is used, and the
                       exported visualization is adapted
+--usage-stats         also compute statistics on the usage of way segments, off by default
 -p PARALLEL, --parallel PARALLEL
                       disables parallel processing if 0, otherwise defines the number of worker processes
 --recompute           always recompute annotation results

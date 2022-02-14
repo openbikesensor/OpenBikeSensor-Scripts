@@ -76,14 +76,15 @@ def collect_datasets(path, exclusion_list):
 
 
 def process_datasets(datasets, path_annotated, osm, skip_if_json_exists=True, path_cache='./cache',
-                     n_worker_processes=1, process_parallel=True, right_hand_traffic=True):
+                     n_worker_processes=1, process_parallel=True, right_hand_traffic=True,
+                     fully_annotate_unconfirmed=False):
 
     log.info("annotating datasets")
 
-    annotator = AnnotateMeasurements(osm, cache_dir=path_cache)
+    annotator = AnnotateMeasurements(osm, cache_dir=path_cache, fully_annotate_unconfirmed=fully_annotate_unconfirmed)
     measurement_filter = ChainFilter(
         RequiredFieldsFilter(),
-        DistanceMeasuredFilter(),
+        # DistanceMeasuredFilter(),
     )
 
     importer = ImportMeasurementsCsv(right_hand_traffic=right_hand_traffic)
@@ -332,6 +333,9 @@ def main():
     parser.add_argument('-D', '--district', required=False, action='append', default=[],
                         help='DEPRECATED; required map parts are now selected automatically')
 
+    parser.add_argument('--usage-stats', required=False, action='store_true', default=False,
+                        help='also compute statistics on the usage of way segments')
+
     parser.add_argument('--left-hand-traffic', required=False, action='store_false', dest='right_hand_traffic',
                         default=True,
                         help='switches to left-hand traffic (otherwise: right-hand traffic); right instead left '
@@ -411,7 +415,8 @@ def main():
                                                     path_cache=args.path_cache,
                                                     skip_if_json_exists=not args.recompute,
                                                     n_worker_processes=args.parallel,
-                                                    process_parallel=args.parallel > 0)
+                                                    process_parallel=args.parallel > 0,
+                                                    fully_annotate_unconfirmed=args.usage_stats)
 
         log.info("Statistics:")
         log.info("number of files:        %s", statistics["n_files"])
@@ -448,7 +453,6 @@ def main():
             log.error('--output-geojson-roads or --base-path required')
             sys.exit(1)
 
-
         log.info("exporting visualization data")
 
         with open(args.path_output_collected, 'r') as infile:
@@ -463,12 +467,14 @@ def main():
           ).filter(measurements)
 
         log.info("exporting GeoJson measurements")
-        exporter = ExportMeasurements(args.output_geojson_measurements, do_filter=True)
+        exporter = ExportMeasurements(args.output_geojson_measurements, do_filter=False)
         exporter.add_measurements(measurements)
         exporter.finalize()
 
         log.info("exporting GoeJson roads")
-        exporter = ExportRoadAnnotation(args.output_geojson_roads, map_source, right_hand_traffic=args.right_hand_traffic)
+        exporter = ExportRoadAnnotation(args.output_geojson_roads, map_source,
+                                        right_hand_traffic=args.right_hand_traffic,
+                                        only_ways_with_overtake_events=False)
         exporter.add_measurements(measurements)
         exporter.finalize()
 
