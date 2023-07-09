@@ -451,22 +451,9 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		chart.render();
 
 
-		var noFeatureActive = true;
-
 		map.on('singleclick', function (evt) {
-			var feature = map.forEachFeatureAtPixel(evt.pixel,
-				function (feature, layer) {
-					return feature;
-				});
-
+			var feature = vectorLayer.getSource().getClosestFeatureToCoordinate(evt.coordinate);
 			var resolution = map.getView().getResolution();
-
-			if (!noFeatureActive) {
-				vectorLayer.getSource().getFeatures().forEach(f => {
-					f.setStyle(styleFunction(f, resolution, false));
-				});
-				noFeatureActive = true;
-			}
 
 			if (feature && dataSource.hasFeature(feature)) {
 				console.log(annotation_verbose(feature));
@@ -486,7 +473,6 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 						colors = histogramColorsUrban;
 				}
 
-
 				chart.updateOptions({
 					colors: colors
 				});
@@ -503,6 +489,9 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 				noFeatureActive = false;
 			}
 
+			vectorLayer.getSource().getFeatures().forEach(f => {
+				if (f != feature) f.setStyle(styleFunction(f, resolution, false));
+			});
 
 		});
 
