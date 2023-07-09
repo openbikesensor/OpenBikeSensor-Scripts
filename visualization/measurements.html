@@ -337,7 +337,8 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     var f = new ol.Feature({
     geometry: new ol.geom.LineString(
     [p1, p2]
-    )
+    ),
+	parent: feature
     });
     // f.setStyle(styles);
     arrowLayer.getSource().addFeature(f);
@@ -354,43 +355,40 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
     arrowLayer.setVisible(true);
 
-
-
-    map.on('singleclick', function(evt) {
-    var feature = map.forEachFeatureAtPixel(evt.pixel, function(feature, layer) {
-    return feature;
-    });
-    if (feature && dataSource.hasFeature(feature)) {
-    var coord = feature.getGeometry().getCoordinates();
-    var props = feature.getProperties();
-    caption.innerHTML = annotation(feature);
-    caption.style.alignItems="flex-start";
-    console.log(annotation_verbose(feature));
-    }
-    });
-
-
-    // feature mouse hover handler
     var noFeatureActive = false;
 
+	function selectNode(feature) {
+		var prop = feature.getProperties();
+		if (prop.hasOwnProperty('parent')) feature = prop.parent;
+		if (dataSource.hasFeature(feature)) {
+		var coord = feature.getGeometry().getCoordinates();
+		var props = feature.getProperties();
+		caption.innerHTML = annotation(feature);
+		caption.style.alignItems="flex-start";
+		console.log(annotation_verbose(feature));
+		feature.setStyle(styleFunction(feature, undefined, true));
+		noFeatureActive = false;
+		}
+		vectorLayer.getSource().getFeatures().forEach(f=>{
+		if (f != feature) f.setStyle(styleFunction(f, undefined, false));
+		});
+	}
+
+    map.on('singleclick', function(evt) {
+	var sources = vectorLayer.getSource();
+		var feature = vectorLayer.getSource().getClosestFeatureToCoordinate(evt.coordinate);
+		if (feature) selectNode(feature);
+		return feature;
+    });
+
     map.on('pointermove', function(evt) {
-    if (evt.dragging) {
-    return;
-    }
-    if (!noFeatureActive){
-    vectorLayer.getSource().getFeatures().forEach(f=>{
-    f.setStyle(styleFunction(f, undefined, false));
-    });
-    noFeatureActive = true;
-    }
-    var pixel = map.getEventPixel(evt.originalEvent);
-    map.forEachFeatureAtPixel(pixel,function(feature) {
-    if (dataSource.hasFeature(feature)){
-    feature.setStyle(styleFunction(feature, undefined, true));
-    noFeatureActive = false;
-    }
-    return feature;
-    });
+		var feature = map.forEachFeatureAtPixel(evt.pixel, function(feature, layer) {
+		return feature;
+		});
+		if (evt.dragging) return;
+
+		if (feature) selectNode(feature);
+		return feature;
     });
 
     paletteUrban.writeLegend('legend_urban', [0, 1.5, 2.5], 'm');
