@@ -355,8 +355,6 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
     arrowLayer.setVisible(true);
 
-    var noFeatureActive = false;
-
 	function selectNode(feature) {
 		var prop = feature.getProperties();
 		if (prop.hasOwnProperty('parent')) feature = prop.parent;
@@ -367,7 +365,6 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		caption.style.alignItems="flex-start";
 		console.log(annotation_verbose(feature));
 		feature.setStyle(styleFunction(feature, undefined, true));
-		noFeatureActive = false;
 		}
 		vectorLayer.getSource().getFeatures().forEach(f=>{
 		if (f != feature) f.setStyle(styleFunction(f, undefined, false));

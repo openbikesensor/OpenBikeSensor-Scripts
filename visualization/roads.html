@@ -450,7 +450,6 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		var chart = new ApexCharts(document.querySelector("#chart"), chartOptions);
 		chart.render();
 
-
 		map.on('singleclick', function (evt) {
 			var feature = vectorLayer.getSource().getClosestFeatureToCoordinate(evt.coordinate);
 			var resolution = map.getView().getResolution();
@@ -483,7 +482,6 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 					name: 'Überholende',
 					data: hist,
 				}]);
-
 
 				feature.setStyle(styleFunction(feature, resolution, true));
 				noFeatureActive = false;
