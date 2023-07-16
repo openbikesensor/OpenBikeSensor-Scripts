@@ -91,13 +91,7 @@ class ExportRoadAnnotation:
                     coordinates = []
 
                 feature = {"type": "Feature",
-                           "properties": {"distance_overtaker_mean": way_stats.d_mean[i],
-                                          "distance_overtaker_median": way_stats.d_median[i],
-                                          "distance_overtaker_minimum": way_stats.d_minimum[i],
-                                          "distance_overtaker_n": way_stats.n[i],
-                                          "distance_overtaker_n_below_limit": way_stats.n_lt_limit[i],
-                                          "distance_overtaker_n_above_limit": way_stats.n_geq_limit[i],
-                                          "distance_overtaker_limit": way_stats.d_limit,
+                           "properties": {"distance_overtaker_limit": way_stats.d_limit,
                                           "distance_overtaker_measurements": way_stats.samples[i],
                                           "zone": way_stats.zone,
                                           "direction": direction,
@@ -127,9 +121,6 @@ class WayStatistics:
 
         self.way_id = way_id
         self.valid = [False, False]
-        self.d_mean = [0, 0]
-        self.d_median = [0, 0]
-        self.d_minimum = [0, 0]
 
         self.zone = "unknown"
         self.oneway = False
@@ -164,11 +155,4 @@ class WayStatistics:
         for i in range(2):
             samples = np.array(self.samples[i])
             if len(samples) > 0:
-                self.n[i] = len(samples)
-                self.d_mean[i] = np.mean(samples)
-                self.d_median[i] = np.median(samples)
-                self.d_minimum[i] = np.min(samples)
-                if self.d_limit is not None:
-                    self.n_lt_limit[i] = int((samples < self.d_limit).sum())
-                    self.n_geq_limit[i] = int((samples >= self.d_limit).sum())
                 self.valid[i] = True

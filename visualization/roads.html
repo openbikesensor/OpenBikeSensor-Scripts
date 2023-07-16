@@ -188,23 +188,32 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
 			return binCounts;
 		}
-
-		function annotation(feature) {
+		// Calculate statistics once
+		function getStats(feature) {
+		if (feature.stats != null) return feature.stats;
+		stats = {};
 			var limit = feature.get('distance_overtaker_limit');
 			var m = feature.get('distance_overtaker_measurements');
-			var n = m.length;
-			var mean = 0, min = 0, below = 0, median = 0;
+			stats.n = m.length;
+			stats.mean = 0;
+			stats.min = 0;
+			stats.median = 0;
+			stats.below = 0;
 			for (let i = 0; i < m.length; i++) {
-				mean += m[i];
-				if (m[i] < limit) below++;
+				stats.mean += m[i];
+				if (m[i] < limit) stats.below++;
 			}
 			if (m.length > 0){
-				mean /= m.length;
+				stats.mean /= m.length;
 				var msorted = m.sort(function (a, b) {  return a - b;  });
-				min = msorted[0];
-				median = msorted[Math.ceil(m.length/2)];
+				stats.min = msorted[0];
+				stats.median = msorted[Math.floor(m.length/2)];
 			}
-
+			feature.stats = stats;
+			console.log("stats=" + stats.n);
+			return stats;
+		}
+		function annotation(feature, stats) {
 			var s = "<table>";
 
 			s += "<tr><td>Stra&szlig;enname:</td><td><a href=\"https://www.openstreetmap.org/way/" + feature.get('way_id') + "\" target=\"_blank\">" + feature.get('name')
@@ -212,20 +221,20 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
 			s += "<tr height=\"5em\"></tr>";
 
-			var p = below / n * 100.0;
-			s += "<tr><td>Unterschreitung Mindestabstand:</td><td>" + ((n > 0) ? "n/a" : p.toFixed(1)) + "% der &Uuml;berholenden</td></tr>";
+			var p = stats.below / stats.n * 100.0;
+			s += "<tr><td>Unterschreitung Mindestabstand:</td><td>" + ((stats.n > 0) ? "n/a" : p.toFixed(1)) + "% der &Uuml;berholenden</td></tr>";
 
-			s += "<tr><td>Durchschnitt &Uuml;berholabstand:</td><td>" + ((mean == 0) ? "n/a" : mean.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>Durchschnitt &Uuml;berholabstand:</td><td>" + ((stats.mean == 0) ? "n/a" : stats.mean.toFixed(2)) + " m </td></tr>";
 
-			s += "<tr><td>Median &Uuml;berholabstand:</td><td>" + ((median == 0) ? "n/a" : median.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>Median &Uuml;berholabstand:</td><td>" + ((stats.median == 0) ? "n/a" : stats.median.toFixed(2)) + " m </td></tr>";
 
-			s += "<tr><td>Minimum &Uuml;berholabstand:</td><td>" + ((min == 0) ? "n/a" : min.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>Minimum &Uuml;berholabstand:</td><td>" + ((stats.min == 0) ? "n/a" : stats.min.toFixed(2)) + " m </td></tr>";
 
 			s += "<tr height=\"5em\"></tr>";
 
-			s += "<tr><td>Mindest&uuml;berholabstand:</td><td>" + ((limit == null) ? "n/a" : limit.toFixed(2)) + " m </td>";
+			s += "<tr><td>Mindest&uuml;berholabstand:</td><td>" + ((stats.limit == null) ? "n/a" : stats.limit.toFixed(2)) + " m </td>";
 
-			s += "<tr><td>Anzahl Messungen:</td><td>" + n.toFixed(0) + "</td></tr>";
+			s += "<tr><td>Anzahl Messungen:</td><td>" + stats.n.toFixed(0) + "</td></tr>";
 
 			s += "</table>";
 
@@ -238,6 +247,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		}
 
 		function styleFunction(feature, resolution, active = false) {
+			var stats = getStats(feature);
 			var n = feature.get('distance_overtaker_n');
 			var zone = feature.get('zone');
 			if (zone == "urban") {
@@ -255,20 +265,16 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			if (valid) {
 				switch (criterion) {
 					case "d_mean":
-						var d = feature.get('distance_overtaker_mean');
-						color = palette.rgba_css(d)
+						color = palette.rgba_css(stats.mean)
 						break;
 					case "d_median":
-						var d = feature.get('distance_overtaker_median');
-						color = palette.rgba_css(d)
+						color = palette.rgba_css(stats.median)
 						break;
 					case "d_min":
-						var d = feature.get('distance_overtaker_minimum');
-						color = palette.rgba_css(d)
+						color = palette.rgba_css(stats.min)
 						break;
 					case "p_above":
-						var n = feature.get('distance_overtaker_n');
-						var a = feature.get('distance_overtaker_n_above_limit');
+						var a = stats.n - stats.below;
 						var p = undefined;
 						if (n > 0) {
 							p = a / n;
@@ -276,14 +282,10 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 						color = palettePercentage.rgba_css(p * 100.0);
 						break;
 					case "p_below":
-						var n = feature.get('distance_overtaker_n');
-						var a = feature.get('distance_overtaker_n_below_limit');
 						var p = undefined;
-						if (n > 0) {
-							p = a / n;
+						if (stats.n > 0) {
+							p = stats.below / stats.n;
 						}
-						// color = palettePercentageInverted.rgba_css(p*100.0);
-						// color = palettePercentageZweirat.rgba_css(p*100.0);
 						color = palettePercentageZweirat.rgba(p * 100.0);
 						break;
 				}
@@ -420,8 +422,9 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			var feature = vectorLayer.getSource().getClosestFeatureToCoordinate(evt.coordinate);
 			var resolution = map.getView().getResolution();
 
+			var stats = getStats(feature);
 			if (feature && dataSource.hasFeature(feature)) {
-				caption.innerHTML = annotation(feature);
+				caption.innerHTML = annotation(feature, stats);
 				caption.style.alignItems = "flex-start";
 
 				var zone = feature.get('zone');
