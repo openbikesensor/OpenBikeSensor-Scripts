@@ -189,48 +189,21 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			return binCounts;
 		}
 
-
-		function annotation_verbose(feature) {
-			var s = "";
-
-			s += "name: " + feature.get('name') + "\n";
-			s += "way_id: " + feature.get('way_id') + "\n";
-			s += "direction: " + feature.get('direction') + "\n";
-			s += "zone: " + feature.get('zone') + "\n";
-			s += "valid: " + feature.get('valid') + "\n";
-
-			d = feature.get('distance_overtaker_limit');
-			s += "distance_overtaker_limit: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			s += "<hr></hr>statistics\n";
-
-			d = feature.get('distance_overtaker_mean');
-			s += "distance_overtaker_mean: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			d = feature.get('distance_overtaker_median');
-			s += "distance_overtaker_median: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			d = feature.get('distance_overtaker_minimum');
-			s += "distance_overtaker_minimum: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			d = feature.get('distance_overtaker_n');
-			s += "distance_overtaker_n: " + ((d == null) ? "n/a" : d.toFixed(0)) + "\n";
-
-			d = feature.get('distance_overtaker_n_above_limit');
-			s += "distance_overtaker_n_above_limit: " + ((d == null) ? "n/a" : d.toFixed(0)) + "\n";
-
-			d = feature.get('distance_overtaker_n_below_limit');
-			s += "distance_overtaker_n_below_limit: " + ((d == null) ? "n/a" : d.toFixed(0)) + "\n";
-
-			var n_below = feature.get('distance_overtaker_n_below_limit');
-			var n = feature.get('distance_overtaker_n');
-			var p = n_below / n * 100.0;
-			s += "overtakers below limit: " + ((p == null) ? "n/a" : p.toFixed(1)) + " %\n";
-
-			return s;
-		}
-
 		function annotation(feature) {
+			var limit = feature.get('distance_overtaker_limit');
+			var m = feature.get('distance_overtaker_measurements');
+			var n = m.length;
+			var mean = 0, min = 0, below = 0, median = 0;
+			for (let i = 0; i < m.length; i++) {
+				mean += m[i];
+				if (m[i] < limit) below++;
+			}
+			if (m.length > 0){
+				mean /= m.length;
+				var msorted = m.sort(function (a, b) {  return a - b;  });
+				min = msorted[0];
+				median = msorted[Math.ceil(m.length/2)];
+			}
 
 			var s = "<table>";
 
@@ -239,27 +212,20 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
 			s += "<tr height=\"5em\"></tr>";
 
-			var n_below = feature.get('distance_overtaker_n_below_limit');
-			var n = feature.get('distance_overtaker_n');
-			var p = n_below / n * 100.0;
-			s += "<tr><td>Unterschreitung Mindestabstand:</td><td>" + ((p == null) ? "n/a" : p.toFixed(1)) + "% der &Uuml;berholenden</td></tr>";
+			var p = below / n * 100.0;
+			s += "<tr><td>Unterschreitung Mindestabstand:</td><td>" + ((n > 0) ? "n/a" : p.toFixed(1)) + "% der &Uuml;berholenden</td></tr>";
 
-			d = feature.get('distance_overtaker_mean');
-			s += "<tr><td>Durchschnitt &Uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>Durchschnitt &Uuml;berholabstand:</td><td>" + ((mean == 0) ? "n/a" : mean.toFixed(2)) + " m </td></tr>";
 
-			d = feature.get('distance_overtaker_median');
-			s += "<tr><td>Median &Uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>Median &Uuml;berholabstand:</td><td>" + ((median == 0) ? "n/a" : median.toFixed(2)) + " m </td></tr>";
 
-			d = feature.get('distance_overtaker_minimum');
-			s += "<tr><td>Minimum &Uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>Minimum &Uuml;berholabstand:</td><td>" + ((min == 0) ? "n/a" : min.toFixed(2)) + " m </td></tr>";
 
 			s += "<tr height=\"5em\"></tr>";
 
-			d = feature.get('distance_overtaker_limit');
-			s += "<tr><td>Mindest&uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td>";
+			s += "<tr><td>Mindest&uuml;berholabstand:</td><td>" + ((limit == null) ? "n/a" : limit.toFixed(2)) + " m </td>";
 
-			d = feature.get('distance_overtaker_n');
-			s += "<tr><td>Anzahl Messungen:</td><td>" + ((d == null) ? "n/a" : d.toFixed(0)) + "</td></tr>";
+			s += "<tr><td>Anzahl Messungen:</td><td>" + n.toFixed(0) + "</td></tr>";
 
 			s += "</table>";
 
@@ -455,7 +421,6 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			var resolution = map.getView().getResolution();
 
 			if (feature && dataSource.hasFeature(feature)) {
-				console.log(annotation_verbose(feature));
 				caption.innerHTML = annotation(feature);
 				caption.style.alignItems = "flex-start";
 
