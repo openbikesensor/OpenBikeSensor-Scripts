@@ -92,7 +92,7 @@ class ExportRoadAnnotation:
 
                 feature = {"type": "Feature",
                            "properties": {"distance_overtaker_limit": way_stats.d_limit,
-                                          "distance_overtaker_measurements": way_stats.samples[i],
+                                          "distance_overtaker_measurements": sorted(way_stats.samples[i], key = float),
                                           "zone": way_stats.zone,
                                           "direction": direction,
                                           "name": way_stats.name,
