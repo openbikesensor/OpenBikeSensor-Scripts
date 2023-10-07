@@ -104,18 +104,14 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     <div id="caption" class="caption">
     	<b>Bitte einen Messpunkt in der Karte (farbige Kreise) anklicken um detailierte Informationen zu erhalten.</b>
     </div>
-    <div id="legend" class="legend">
-      <b>Kartenlegende</b><br>
-      Ring um Messung: <font color="#FFFF00">au&szlig;erorts</a>, <font color="#0000FF">innerorts</a>, <font color="#000000">unbekannt</a>
-      <br>
-	Fläche innerhalb kodiert den &Uuml;berholabstand:
-      <div id="legend_rural" class="legend_rural">&Uuml;berholabstand außerorts<br></div>
-      <div id="legend_urban" class="legend_urban">&Uuml;berholabstand innerorts<br></div>
-    </div>
+    <div class="legend">
+		<b>Filter</b><br/>
+		<input id='filter' size='30'/>
+	</div>
   </div>
 
   <script type="text/javascript">
-
+	var displayFilter = [];
     function annotation(feature){
     var s = "<table>";
 
@@ -264,7 +260,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
     var vectorLayer = new ol.layer.Vector({
     source: dataSource,
-    style: function(feature, resolution){ return styleFunction(feature, resolution, false);}
+    style: function(feature, resolution){ return styleFunction(feature, resolution, 0);}
     })
 
     function styleFunction(feature, resolution, active) {
@@ -286,10 +282,13 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     }
     }
 
+	var r = 5;
+	if (active < 0) r = 2;
+	if (active > 0) r = 10;
 
     var style = new ol.style.Style({
     image: new ol.style.Circle({
-    radius: active?10:5,
+    radius: r,
     fill: new ol.style.Fill({color: color}),
     stroke: stroke
     })
@@ -356,18 +355,35 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     arrowLayer.setVisible(true);
 
 	function selectNode(feature) {
-		var prop = feature.getProperties();
-		if (prop.hasOwnProperty('parent')) feature = prop.parent;
-		if (dataSource.hasFeature(feature)) {
-		var coord = feature.getGeometry().getCoordinates();
-		var props = feature.getProperties();
-		caption.innerHTML = annotation(feature);
-		caption.style.alignItems="flex-start";
-		console.log(annotation_verbose(feature));
-		feature.setStyle(styleFunction(feature, undefined, true));
+		if (feature != null) {
+			var prop = feature.getProperties();
+			if (prop.hasOwnProperty('parent')) feature = prop.parent;
+			if (dataSource.hasFeature(feature)) {
+			var coord = feature.getGeometry().getCoordinates();
+			var props = feature.getProperties();
+			caption.innerHTML = annotation(feature);
+			caption.style.alignItems="flex-start";
+			console.log(annotation_verbose(feature));
+			feature.setStyle(styleFunction(feature, undefined, 1));
+			}
 		}
 		vectorLayer.getSource().getFeatures().forEach(f=>{
-		if (f != feature) f.setStyle(styleFunction(f, undefined, false));
+		if (f != feature) {
+		var sel = 0;
+		if (displayFilter.length > 0) {
+			var val = f.get(displayFilter[0].key);
+			if (displayFilter[0].op == "==") {
+				if (displayFilter[0].val != val) sel = -1; 
+			}
+			else {
+				var fval = parseFloat(val);
+				var fcomp  = parseFloat(displayFilter[0].val);
+				if (displayFilter[0].op == "<") if (fval >= fcomp) sel = -1;
+				else if (displayFilter[0].op == ">") if (fval <= fcomp) sel = -1;
+			}
+		}
+		f.setStyle(styleFunction(f, undefined, sel));
+		}
 		});
 	}
 
@@ -378,8 +394,19 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		return feature;
     });
 
-    paletteUrban.writeLegend('legend_urban', [0, 1.5, 2.5], 'm');
-    paletteRural.writeLegend('legend_rural', [0, 2.0, 2.5], 'm');
+	var input = document.getElementById("filter");
+	input.addEventListener("keypress", function(event) {
+		if (event.key === "Enter") {
+		event.preventDefault();
+		displayFilter = []
+		var args = input.value.split(' ');
+		if (args.length >= 3) {
+			var f = {key:args[0], op:args[1], val:args[2]}
+			displayFilter.push(f);
+		}
+		selectNode(null);
+  }
+}); 
   </script>
 </body>
 </html>
