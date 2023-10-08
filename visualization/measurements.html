@@ -116,10 +116,10 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     var s = "<table>";
 
     d = feature.get('distance_overtaker');
-    s += "<td><b>&Uuml;berholabstand:</b></td><td><b>" + ((d == null)?"n/a":d.toFixed(2)) + " m</b></td></tr>";
+    s += "<td><div title='distance_overtaker'>&Uuml;berholabstand:</div></td><td><b>" + ((d == null)?"n/a":d.toFixed(2)) + " m</b></td></tr>";
     s += "<tr><td>Zeit/Datum der Messung:</td><td>" + feature.get('time') + "</td></tr>";
 
-    s += "<tr><td>Benutzer (pseudonymisiert):</td><td>" + feature.get('user_id') + "</td></tr>";
+    s += "<tr><td><div title='user_id'>Benutzer (pseudonymisiert):</div></td><td>" + feature.get('user_id') + "</td></tr>";
     s += "<tr><td>Messungs-ID (pseudonymisiert):</td><td>" + feature.get('measurement_id') + "</td></tr>";
 
     if (feature.get('has_OSM_annotations') == true){
@@ -128,15 +128,15 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     s += "<tr><td>Position der Messung (GPS):</td><td>" + feature.get('latitude_GPS') + " " + feature.get('longitude_GPS') + "</td></tr>";
 
     d = feature.get('distance_stationary');
-    s += "<tr><td>Abstand nach rechts:</td><td>" + ((d == null)?"n/a":d.toFixed(2)) + " m  </td></tr>";
+    s += "<tr><td><div title='distance_stationary'>Abstand nach rechts:</div></td><td>" + ((d == null)?"n/a":d.toFixed(2)) + " m  </td></tr>";
 
-    s += "<tr><td>"
+    s += "<tr><td><div title='speed'>"
     if (feature.get("egomotion_is_derived") == true){
     s += "Eigenbewegung (aus Pos. berechnet)";
     } else {
     s += "Eigenbewegung (von GPS)";
     }
-    s += "</td><td>";
+    s += "</div></td><td>";
     c = feature.get('course');
     s += ((c == null)?"n/a":c.toFixed(0)) + " deg, ";
 
@@ -376,10 +376,10 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 				if (displayFilter[0].val != val) sel = -1; 
 			}
 			else {
-				var fval = parseFloat(val);
+				var fval = val ? parseFloat(val) : 2;		// map missing to 2m distance
 				var fcomp  = parseFloat(displayFilter[0].val);
-				if (displayFilter[0].op == "<") if (fval >= fcomp) sel = -1;
-				else if (displayFilter[0].op == ">") if (fval <= fcomp) sel = -1;
+				if (displayFilter[0].op == "<") { if (fval >= fcomp) sel = -1;}
+				else if (displayFilter[0].op == ">") { if (fval <= fcomp) sel = -1;}
 			}
 		}
 		f.setStyle(styleFunction(f, undefined, sel));
@@ -399,7 +399,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		if (event.key === "Enter") {
 		event.preventDefault();
 		displayFilter = []
-		var args = input.value.split(' ');
+		var args = input.value.replace(/\s+/g, ' ').trim().split(' ');
 		if (args.length >= 3) {
 			var f = {key:args[0], op:args[1], val:args[2]}
 			displayFilter.push(f);
