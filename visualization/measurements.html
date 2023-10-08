@@ -125,7 +125,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     if (feature.get('has_OSM_annotations') == true){
     s += "<tr><td>Position der Messung (korrigiert):</td><td>" + feature.get('latitude_projected').toFixed(6) + " " + feature.get('longitude_projected').toFixed(6) + "</td></tr>";
     }
-    s += "<tr><td>Position der Messung (GPS):</td><td>" + feature.get('latitude_GPS').toFixed(6) + " " + feature.get('longitude_GPS').toFixed(6) + "</td></tr>";
+    s += "<tr><td>Position der Messung (GPS):</td><td>" + feature.get('latitude_GPS') + " " + feature.get('longitude_GPS') + "</td></tr>";
 
     d = feature.get('distance_stationary');
     s += "<tr><td>Abstand nach rechts:</td><td>" + ((d == null)?"n/a":d.toFixed(2)) + " m  </td></tr>";
