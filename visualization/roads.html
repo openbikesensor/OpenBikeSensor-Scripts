@@ -43,13 +43,14 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		.overlay {
 			display: flex;
 			flex-direction: column;
-			justify-content: space-around;
+			justify-content: space-between;
 			position: absolute;
 			width: 30%;
 			height: 98%;
 			left: 1%;
 			top: 1%;
 			z-index: 0;
+			pointer-events: none;
 		}
 
 		.title {
@@ -57,7 +58,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			position: relative;
 			height: 10%;
 			width: 100%;
-			background-color: #FFFFFF;
+#			background-color: #FFFFFF;
 			padding: 5px;
 			z-index: 0;
 		}
@@ -81,6 +82,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			padding: 5px;
 			align-items: center;
 			z-index: 0;
+			pointer-events: auto;
 		}
 
 		.chart {
@@ -89,19 +91,15 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			background-color: #FFFFFF;
 			padding: 5px;
 			z-index: 0;
-		}
-
-		.legend {
-			height: 15%;
-			width: 100%;
-			background-color: #FFFFFF;
-			padding: 5px;
-			z-index: 0;
+			pointer-events: auto;
 		}
 
 		.ol-zoom {
 			left: unset;
 			right: 8px;
+		}
+		td {
+			padding-left: 10px;
 		}
 	</style>
 	<script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.4.3/build/ol.js"></script>
@@ -113,36 +111,26 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 <body>
 	<div id="map" class="map"></div>
 	<div id="overlay" class="overlay">
+		<div id="chart" class="chart"></div>
 		<div id="title" class="title">
 			<div id="title_image"><img src="images/OBS.png" height="100%"></img></div>
-			<div id="title_text">
-				<h4>Visualisierung: Stra&szlig;enabschnitte </h4>
-			</div>
 		</div>
-		<div id="chart" class="chart"></div>
 		<div id="caption" class="caption">
-			<b>Bitte einen Streckenabschnitt in der Karte (farbige Linien) anklicken um detailierte Informationen zu
-				erhalten.</b>
-		</div>
-		<div id="legend" class="legend">
-			<b>Kartenlegende</b><br>
-			Streckenabschnitte werden wie folgt eingefärbt: <br>
-			Anteil der &Uuml;berholenden unter Minimalabstand:
-			<div id="colorbar" class="colorbar"> </div>
-			ohne Messungen: <font color="#808080">grau</font>
 		</div>
 	</div>
 
 	<script type="text/javascript">
 		//			var criterion = "d_mean";
 		// var criterion = "p_above";
-		var criterion = "p_below";
+		var criterion = "d_quartile";
 
 		var hist_xa = 0.0;
 		var hist_xb = 2.55;
 		var hist_xb_extends_to_infinity = true;
 		var hist_dx = 0.25;
 		var hist_n = Math.ceil((hist_xb - hist_xa) / hist_dx);
+		var selectedFeatures = [];
+		var globalStats;
 
 		function histogramLabels() {
 
@@ -188,78 +176,89 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
 			return binCounts;
 		}
-
-
-		function annotation_verbose(feature) {
-			var s = "";
-
-			s += "name: " + feature.get('name') + "\n";
-			s += "way_id: " + feature.get('way_id') + "\n";
-			s += "direction: " + feature.get('direction') + "\n";
-			s += "zone: " + feature.get('zone') + "\n";
-			s += "valid: " + feature.get('valid') + "\n";
-
-			d = feature.get('distance_overtaker_limit');
-			s += "distance_overtaker_limit: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			s += "<hr></hr>statistics\n";
-
-			d = feature.get('distance_overtaker_mean');
-			s += "distance_overtaker_mean: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			d = feature.get('distance_overtaker_median');
-			s += "distance_overtaker_median: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			d = feature.get('distance_overtaker_minimum');
-			s += "distance_overtaker_minimum: " + ((d == null) ? "n/a" : d.toFixed(2)) + " m \n";
-
-			d = feature.get('distance_overtaker_n');
-			s += "distance_overtaker_n: " + ((d == null) ? "n/a" : d.toFixed(0)) + "\n";
-
-			d = feature.get('distance_overtaker_n_above_limit');
-			s += "distance_overtaker_n_above_limit: " + ((d == null) ? "n/a" : d.toFixed(0)) + "\n";
-
-			d = feature.get('distance_overtaker_n_below_limit');
-			s += "distance_overtaker_n_below_limit: " + ((d == null) ? "n/a" : d.toFixed(0)) + "\n";
-
-			var n_below = feature.get('distance_overtaker_n_below_limit');
-			var n = feature.get('distance_overtaker_n');
-			var p = n_below / n * 100.0;
-			s += "overtakers below limit: " + ((p == null) ? "n/a" : p.toFixed(1)) + " %\n";
-
-			return s;
+		function getMeasurements(features) {
+			var m = [];
+			features.forEach(feature => {
+				m = m.concat(feature.get('distance_overtaker_measurements'));
+			});
+			m.sort((a, b) => a - b);
+			return m;
+		}
+		function getStats(features) {
+			var limit = 100;
+			var m = getMeasurements(features);
+			var ticks = 0;
+			features.forEach(feature => {
+				var l = feature.get('distance_overtaker_limit');
+				if (l < limit) limit = l;
+				ticks += feature.get('ticks');
+			});
+			stats = {};
+			stats.n = m.length;
+			stats.median = m.length > 0 ? m[Math.floor(m.length/2)] : 0;
+			stats.min = m.length > 0 ? m[0] : 0;
+			stats.below = 0;
+			stats.limit = limit;
+			stats.ticks = ticks;
+			stats.m = m;
+			for (let i = 0; i < m.length && m[i] < limit; i++) stats.below++;
+			return stats;
 		}
 
-		function annotation(feature) {
-
+		function annotation(features) {
+			var stats = globalStats;
+			var way_id = 'all';
+			var name;
+			if (features.length > 0) {
+				 stats = getStats(features);
+				var feature = features[0];
+				way_id = feature.get('way_id');
+				name = feature.get('name');
+			}
 			var s = "<table>";
+			if (name) {
+				s += "<tr><td>Stra&szlig;enname:</td><td colspan='3'><a href=\"https://www.openstreetmap.org/way/" + way_id + "\" target=\"_blank\">" + name + "</a></td></tr>";
+			}
+			else {
+				s += "<tr><td colspan='5'><b>&Uuml;bersicht</b>. <br/>Bitte Stra&szlig;en anklicken um lokale Informationen zu erhalten. Einzelne Segmente k&ouml;nnen mit 'Shift' an- und abgew&auml;hlt werden.</td></tr>";
+			}
+			s += "<tr height=\"5em\"></tr>";
 
-			s += "<tr><td>Stra&szlig;enname:</td><td><a href=\"https://www.openstreetmap.org/way/" + feature.get('way_id') + "\" target=\"_blank\">" + feature.get('name')
-				+ "</a></td></tr>";
+
+			var ticks = stats.ticks;
+			if (ticks == 0) ticks = 1;
+			var m = stats.m;
+			var mean = 0;
+			for (let i = 0; i < m.length; i++) {
+				mean += m[i];
+			}
+			s += "<tr><td></td><td>Mittel</td><td>Viertel</td><td>Zehntel</td><td>Minimum</td></tr>";
+			s += "<tr><td>&Uuml;berholabst&auml;nde:</td><td>";
+			s += ((stats.median == 0) ? "n/a" : stats.median.toFixed(2)) + " m </td><td>";
+
+			var quartil = (m.length > 0) ? m[Math.floor(m.length/4)] : 0;
+			s += ((quartil == 0) ? "n/a" : quartil.toFixed(2)) + " m </td><td>";
+
+			var dezil = (m.length > 0) ? m[Math.floor(m.length/10)] : 0;
+			s += ((dezil == 0) ? "n/a" : dezil.toFixed(2)) + " m </td><td>";
+			s += ((m.length == 0) ? "n/a" : m[0].toFixed(2)) + " m </td></tr>";
+
 
 			s += "<tr height=\"5em\"></tr>";
 
-			var n_below = feature.get('distance_overtaker_n_below_limit');
-			var n = feature.get('distance_overtaker_n');
-			var p = n_below / n * 100.0;
-			s += "<tr><td>Unterschreitung Mindestabstand:</td><td>" + ((p == null) ? "n/a" : p.toFixed(1)) + "% der &Uuml;berholenden</td></tr>";
+			var p = stats.below / stats.n * 100.0;
+			s += "<tr><td>Unterschreitung Mindestabstand von " + ((stats.limit == null) ? "n/a" : stats.limit.toFixed(2)) + " m :</td><td colspan='3'>" + ((stats.n == 0) ? "n/a" : p.toFixed(1)) + "% der &Uuml;berholenden</td></tr>";
 
-			d = feature.get('distance_overtaker_mean');
-			s += "<tr><td>Durchschnitt &Uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>&Uuml;berholvorg&auml;nge pro Minute:</td><td>" + (m.length / ticks * 60).toFixed(1) + "</td></tr>";
 
-			d = feature.get('distance_overtaker_median');
-			s += "<tr><td>Median &Uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td></tr>";
+			s += "<tr><td>Anzahl &Uuml;berholvorg&auml;nge:</td><td>" + stats.n.toFixed(0) + "</td></tr>";
 
-			d = feature.get('distance_overtaker_minimum');
-			s += "<tr><td>Minimum &Uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td></tr>";
-
-			s += "<tr height=\"5em\"></tr>";
-
-			d = feature.get('distance_overtaker_limit');
-			s += "<tr><td>Mindest&uuml;berholabstand:</td><td>" + ((d == null) ? "n/a" : d.toFixed(2)) + " m </td>";
-
-			d = feature.get('distance_overtaker_n');
-			s += "<tr><td>Anzahl Messungen:</td><td>" + ((d == null) ? "n/a" : d.toFixed(0)) + "</td></tr>";
+			if (ticks > 3600) {
+				s += "<tr><td>Dauer der Erfassung:</td><td>" + (ticks / 3600).toFixed(1) + " h</td></tr>";
+			}
+			else {
+				s += "<tr><td>Dauer der Erfassung:</td><td colspan='2'>" + (ticks / 60).toFixed(1) + " min</td></tr>";
+			}
 
 			s += "</table>";
 
@@ -272,7 +271,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		}
 
 		function styleFunction(feature, resolution, active = false) {
-			var n = feature.get('distance_overtaker_n');
+			var m = feature.get('distance_overtaker_measurements');
 			var zone = feature.get('zone');
 			if (zone == "urban") {
 				palette = paletteUrban;
@@ -287,55 +286,30 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 			var color = [0, 0, 0, 255];
 
 			if (valid) {
+				var rgba;
 				switch (criterion) {
-					case "d_mean":
-						var d = feature.get('distance_overtaker_mean');
-						color = palette.rgba_css(d)
-						break;
 					case "d_median":
-						var d = feature.get('distance_overtaker_median');
-						color = palette.rgba_css(d)
+						color = palette.rgba(m[Math.floor(m.length/2)])
+						break;
+					case "d_quartile":
+						color = palette.rgba(m[Math.floor(m.length/4)])
 						break;
 					case "d_min":
-						var d = feature.get('distance_overtaker_minimum');
-						color = palette.rgba_css(d)
-						break;
-					case "p_above":
-						var n = feature.get('distance_overtaker_n');
-						var a = feature.get('distance_overtaker_n_above_limit');
-						var p = undefined;
-						if (n > 0) {
-							p = a / n;
-						}
-						color = palettePercentage.rgba_css(p * 100.0);
-						break;
-					case "p_below":
-						var n = feature.get('distance_overtaker_n');
-						var a = feature.get('distance_overtaker_n_below_limit');
-						var p = undefined;
-						if (n > 0) {
-							p = a / n;
-						}
-						// color = palettePercentageInverted.rgba_css(p*100.0);
-						// color = palettePercentageZweirat.rgba_css(p*100.0);
-						color = palettePercentageZweirat.rgba(p * 100.0);
+						color = palette.rgba(m[0])
 						break;
 				}
+				if (m.length < 2) {
+					var sum = color[0] + color[1] + color[2];
+					color = [color[0] * 240 / sum, color[1] * 240 / sum, color[2] * 240 / sum, 255];
+					if (color[0] < 220) color[0] = 220;
+					if (color[1] < 220) color[1] = 220;
+					if (color[2] < 220) color[2] = 220;
+				}
 			} else {
-				color = [128, 128, 128, 255];
+				color = [220, 230, 220, 255];
 			}
 
-
-			var detail = smoothStep(resolution, 2.0, 1.0);
-			var mid = smoothStep(resolution, 30.0, 20.0) - smoothStep(resolution, 2.0, 1.0);
-			var overview = smoothStep(resolution, 20.0, 30.0);
-
-			console.log("resolution=" + resolution + "detail/mid/overview=" + detail + "/" + mid + "/" + overview);
-			var alpha = 1.0 * detail + 0.5 * mid + 0.5 * overview;
-			var width = active ? 2 : 1;
-			width = (active ? 4.0 : 2.0) * detail + 4 * mid + 200.0 / resolution * overview;
-
-			color[3] = alpha;
+			var width = (active ? 4.0 : 2.0); // * detail + 4 * mid + 200.0 / resolution * overview;
 
 			var style = new ol.style.Style({
 				stroke: new ol.style.Stroke({
@@ -348,6 +322,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
 		var map = new ol.Map({
 			target: 'map',
+			interactions : ol.interaction.defaults({doubleClickZoom :false}),
 			layers: [
 				new ol.layer.Tile({
 				    className: "bw",
@@ -384,6 +359,9 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 				const overlay = document.getElementById("overlay");
 				const marginLeft = overlay.offsetWidth + overlay.offsetLeft;
     			map.getView().fit(extent, {size: mapSize, padding: [0, 0, 0, marginLeft]});
+				var evt0 = {coordinate: [0,0]};
+				onclick(evt0);
+
 			}
 		});
 
@@ -450,67 +428,78 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 		var chart = new ApexCharts(document.querySelector("#chart"), chartOptions);
 		chart.render();
 
-
-		var noFeatureActive = true;
-
-		map.on('singleclick', function (evt) {
-			var feature = map.forEachFeatureAtPixel(evt.pixel,
-				function (feature, layer) {
-					return feature;
-				});
-
+		function onclick(evt) {
+			var lonlat = ol.proj.transform(evt.coordinate, 'EPSG:3857', 'EPSG:4326');
+			var feature = vectorLayer.getSource().getClosestFeatureToCoordinate(evt.coordinate);
+			var distance = 10000;
+			if (feature) {
+				var closest = feature.getGeometry().getClosestPoint(evt.coordinate);
+				var lonlat2 = ol.proj.transform(closest, 'EPSG:3857', 'EPSG:4326');
+				distance = ol.sphere.getDistance([lonlat[0], lonlat[1]], [lonlat2[0], lonlat2[1]]);
+			}
 			var resolution = map.getView().getResolution();
 
-			if (!noFeatureActive) {
-				vectorLayer.getSource().getFeatures().forEach(f => {
+			var colors = histogramColorsUrban;
+			if (feature && feature.get('zone') == "rural") {
+				colors = histogramColorsRural;
+			}
+			chart.updateOptions({
+				colors: colors
+			});
+			var hist;
+			var total = [];
+			if (distance > 100) {
+				vectorLayer.getSource().getFeatures().forEach(f => { total.push(f); });
+				selectedFeatures.forEach(f => {
 					f.setStyle(styleFunction(f, resolution, false));
 				});
-				noFeatureActive = true;
-			}
-
-			if (feature && dataSource.hasFeature(feature)) {
-				console.log(annotation_verbose(feature));
-				caption.innerHTML = annotation(feature);
-				caption.style.alignItems = "flex-start";
-
-				var zone = feature.get('zone');
-				var colors = undefined;
-				switch (zone) {
-					case "urban":
-						colors = histogramColorsUrban;
-						break;
-					case "rural":
-						colors = histogramColorsRural;
-						break;
-					default:
-						colors = histogramColorsUrban;
+				hist = histogram(total).reverse();
+				if (globalStats == undefined) {
+					globalStats = getStats(total);
 				}
-
-
-				chart.updateOptions({
-					colors: colors
-				});
-
-				var hist = histogram(feature.get('distance_overtaker_measurements')).reverse();
-
-				chart.updateSeries([{
-					name: 'Überholende',
-					data: hist,
-				}]);
-
-
-				feature.setStyle(styleFunction(feature, resolution, true));
-				noFeatureActive = false;
+				selectedFeatures = [];
 			}
+			else if (feature && !evt.originalEvent.shiftKey) {
+				selectedFeatures.forEach(f => {
+					f.setStyle(styleFunction(f, resolution, false));
+				});
+				var name = feature.values_.name;
+				var total = [];
+				selectedFeatures = [];
+				vectorLayer.getSource().getFeatures().forEach(f => {
+					if (f.values_.name == name) {
+						f.setStyle(styleFunction(f, resolution, true));
+						selectedFeatures.push(f);
+					}
+				});
+			}
+			else if (feature && dataSource.hasFeature(feature)) {
 
+				if (selectedFeatures.includes(feature)) {
+					selectedFeatures.splice(selectedFeatures.indexOf(feature), 1);
+					feature.setStyle(styleFunction(feature, resolution, false));
+				}
+				else {
+					feature.setStyle(styleFunction(feature, resolution, true));
+					selectedFeatures.push(feature);
+				}
+			}
+			caption.innerHTML = annotation(selectedFeatures);
+			caption.style.alignItems = "flex-start";
 
-		});
+			if (selectedFeatures.length > 0) total = selectedFeatures;
+			hist = histogram(getMeasurements(total)).reverse();
 
+			chart.updateSeries([{
+				name: 'Überholende',
+				data: hist,
+			}]);
 
+			noFeatureActive = false;
 
+		}
+		map.on('singleclick', onclick);
 
-		// palettePercentageInverted.writeLegend('colorbar', [0, 100.0], '%');
-		palettePercentageZweirat.writeLegend('colorbar', [0, 100.0], '%');
 	</script>
 </body>
 

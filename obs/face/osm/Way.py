@@ -4,7 +4,7 @@ from obs.face.mapping import EquirectangularFast as LocalMap
 
 
 class Way:
-    def __init__(self, way_id, way, all_nodes):
+    def __init__(self, way_id, way, nodes_way):
         self.way_id = way_id
 
         if "tags" in way:
@@ -13,8 +13,6 @@ class Way:
             self.tags = {}
 
         # determine points
-        nodes_way = [all_nodes[i] for i in way["nodes"]]
-
         lat = np.array([n["lat"] for n in nodes_way])
         lon = np.array([n["lon"] for n in nodes_way])
         self.points_lat_lon = np.stack((lat, lon), axis=1)
@@ -35,9 +33,46 @@ class Way:
         # direction
         dx = np.diff(x)
         dy = np.diff(y)
+        self.seg_length = np.hypot(dx, dy)
         self.direction = np.arctan2(dy, dx)
 
         self.directionality_bicycle, self.directionality_motorized = self.get_way_directionality(way)
+
+    @staticmethod
+    def create(way_id, way, all_nodes, max_len):
+        ways = {}
+        # determine points
+        nodes = [all_nodes[i] for i in way["nodes"]]
+        lat = np.array([n["lat"] for n in nodes])
+        lon = np.array([n["lon"] for n in nodes])
+
+        # bounding box
+        a = (min(lat), min(lon))
+        b = (max(lat), max(lon))
+
+        # define the local map around the center of the bounding box
+        lat_0 = (a[0] + b[0]) * 0.5
+        lon_0 = (a[1] + b[1]) * 0.5
+        local_map = LocalMap(lat_0, lon_0)
+        x, y = local_map.transfer_to(lat, lon)
+        dx = np.diff(x)
+        dy = np.diff(y)
+        seg_length = np.hypot(dx, dy)
+
+        slen = 0
+        first = 0
+        if len(dx) > 0:
+            for i in range(len(seg_length)):
+                slen += seg_length[i]
+                if (slen > max_len and i != first):
+                    id = str(way_id)+'.'+str(i)
+                    ways[id] = Way(id, way, nodes[first:i+1])
+                    first = i
+                    slen = 0
+        id = str(way_id)
+        ways[id] = Way(id, way, nodes[first:])
+        return ways
+        
 
     def get_axis_aligned_bounding_box(self):
         return self.a, self.b

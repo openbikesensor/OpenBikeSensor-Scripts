@@ -104,43 +104,39 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     <div id="caption" class="caption">
     	<b>Bitte einen Messpunkt in der Karte (farbige Kreise) anklicken um detailierte Informationen zu erhalten.</b>
     </div>
-    <div id="legend" class="legend">
-      <b>Kartenlegende</b><br>
-      Ring um Messung: <font color="#FFFF00">au&szlig;erorts</a>, <font color="#0000FF">innerorts</a>, <font color="#000000">unbekannt</a>
-      <br>
-	Fläche innerhalb kodiert den &Uuml;berholabstand:
-      <div id="legend_rural" class="legend_rural">&Uuml;berholabstand außerorts<br></div>
-      <div id="legend_urban" class="legend_urban">&Uuml;berholabstand innerorts<br></div>
-    </div>
+    <div class="legend">
+		<b>Filter</b><br/>
+		<input id='filter' size='30'/>
+	</div>
   </div>
 
   <script type="text/javascript">
-
+	var displayFilter = [];
     function annotation(feature){
     var s = "<table>";
 
     d = feature.get('distance_overtaker');
-    s += "<td><b>&Uuml;berholabstand:</b></td><td><b>" + ((d == null)?"n/a":d.toFixed(2)) + " m</b></td></tr>";
+    s += "<td><div title='distance_overtaker'>&Uuml;berholabstand:</div></td><td><b>" + ((d == null)?"n/a":d.toFixed(2)) + " m</b></td></tr>";
     s += "<tr><td>Zeit/Datum der Messung:</td><td>" + feature.get('time') + "</td></tr>";
 
-    s += "<tr><td>Benutzer (pseudonymisiert):</td><td>" + feature.get('user_id') + "</td></tr>";
+    s += "<tr><td><div title='user_id'>Benutzer (pseudonymisiert):</div></td><td>" + feature.get('user_id') + "</td></tr>";
     s += "<tr><td>Messungs-ID (pseudonymisiert):</td><td>" + feature.get('measurement_id') + "</td></tr>";
 
     if (feature.get('has_OSM_annotations') == true){
     s += "<tr><td>Position der Messung (korrigiert):</td><td>" + feature.get('latitude_projected').toFixed(6) + " " + feature.get('longitude_projected').toFixed(6) + "</td></tr>";
     }
-    s += "<tr><td>Position der Messung (GPS):</td><td>" + feature.get('latitude_GPS').toFixed(6) + " " + feature.get('longitude_GPS').toFixed(6) + "</td></tr>";
+    s += "<tr><td>Position der Messung (GPS):</td><td>" + feature.get('latitude_GPS') + " " + feature.get('longitude_GPS') + "</td></tr>";
 
     d = feature.get('distance_stationary');
-    s += "<tr><td>Abstand nach rechts:</td><td>" + ((d == null)?"n/a":d.toFixed(2)) + " m  </td></tr>";
+    s += "<tr><td><div title='distance_stationary'>Abstand nach rechts:</div></td><td>" + ((d == null)?"n/a":d.toFixed(2)) + " m  </td></tr>";
 
-    s += "<tr><td>"
+    s += "<tr><td><div title='speed'>"
     if (feature.get("egomotion_is_derived") == true){
     s += "Eigenbewegung (aus Pos. berechnet)";
     } else {
     s += "Eigenbewegung (von GPS)";
     }
-    s += "</td><td>";
+    s += "</div></td><td>";
     c = feature.get('course');
     s += ((c == null)?"n/a":c.toFixed(0)) + " deg, ";
 
@@ -264,7 +260,7 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
     var vectorLayer = new ol.layer.Vector({
     source: dataSource,
-    style: function(feature, resolution){ return styleFunction(feature, resolution, false);}
+    style: function(feature, resolution){ return styleFunction(feature, resolution, 0);}
     })
 
     function styleFunction(feature, resolution, active) {
@@ -286,10 +282,13 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     }
     }
 
+	var r = 5;
+	if (active < 0) r = 2;
+	if (active > 0) r = 10;
 
     var style = new ol.style.Style({
     image: new ol.style.Circle({
-    radius: active?10:5,
+    radius: r,
     fill: new ol.style.Fill({color: color}),
     stroke: stroke
     })
@@ -337,7 +336,8 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
     var f = new ol.Feature({
     geometry: new ol.geom.LineString(
     [p1, p2]
-    )
+    ),
+	parent: feature
     });
     // f.setStyle(styles);
     arrowLayer.getSource().addFeature(f);
@@ -354,47 +354,59 @@ along with the OpenBikeSensor Scripts Collection.  If not, see
 
     arrowLayer.setVisible(true);
 
-
+	function selectNode(feature) {
+		if (feature != null) {
+			var prop = feature.getProperties();
+			if (prop.hasOwnProperty('parent')) feature = prop.parent;
+			if (dataSource.hasFeature(feature)) {
+			var coord = feature.getGeometry().getCoordinates();
+			var props = feature.getProperties();
+			caption.innerHTML = annotation(feature);
+			caption.style.alignItems="flex-start";
+			console.log(annotation_verbose(feature));
+			feature.setStyle(styleFunction(feature, undefined, 1));
+			}
+		}
+		vectorLayer.getSource().getFeatures().forEach(f=>{
+		if (f != feature) {
+		var sel = 0;
+		if (displayFilter.length > 0) {
+			var val = f.get(displayFilter[0].key);
+			if (displayFilter[0].op == "==") {
+				if (displayFilter[0].val != val) sel = -1; 
+			}
+			else {
+				var fval = val ? parseFloat(val) : 2;		// map missing to 2m distance
+				var fcomp  = parseFloat(displayFilter[0].val);
+				if (displayFilter[0].op == "<") { if (fval >= fcomp) sel = -1;}
+				else if (displayFilter[0].op == ">") { if (fval <= fcomp) sel = -1;}
+			}
+		}
+		f.setStyle(styleFunction(f, undefined, sel));
+		}
+		});
+	}
 
     map.on('singleclick', function(evt) {
-    var feature = map.forEachFeatureAtPixel(evt.pixel, function(feature, layer) {
-    return feature;
-    });
-    if (feature && dataSource.hasFeature(feature)) {
-    var coord = feature.getGeometry().getCoordinates();
-    var props = feature.getProperties();
-    caption.innerHTML = annotation(feature);
-    caption.style.alignItems="flex-start";
-    console.log(annotation_verbose(feature));
-    }
+	var sources = vectorLayer.getSource();
+		var feature = vectorLayer.getSource().getClosestFeatureToCoordinate(evt.coordinate);
+		if (feature) selectNode(feature);
+		return feature;
     });
 
-
-    // feature mouse hover handler
-    var noFeatureActive = false;
-
-    map.on('pointermove', function(evt) {
-    if (evt.dragging) {
-    return;
-    }
-    if (!noFeatureActive){
-    vectorLayer.getSource().getFeatures().forEach(f=>{
-    f.setStyle(styleFunction(f, undefined, false));
-    });
-    noFeatureActive = true;
-    }
-    var pixel = map.getEventPixel(evt.originalEvent);
-    map.forEachFeatureAtPixel(pixel,function(feature) {
-    if (dataSource.hasFeature(feature)){
-    feature.setStyle(styleFunction(feature, undefined, true));
-    noFeatureActive = false;
-    }
-    return feature;
-    });
-    });
-
-    paletteUrban.writeLegend('legend_urban', [0, 1.5, 2.5], 'm');
-    paletteRural.writeLegend('legend_rural', [0, 2.0, 2.5], 'm');
+	var input = document.getElementById("filter");
+	input.addEventListener("keypress", function(event) {
+		if (event.key === "Enter") {
+		event.preventDefault();
+		displayFilter = []
+		var args = input.value.replace(/\s+/g, ' ').trim().split(' ');
+		if (args.length >= 3) {
+			var f = {key:args[0], op:args[1], val:args[2]}
+			displayFilter.push(f);
+		}
+		selectNode(null);
+  }
+}); 
   </script>
 </body>
 </html>

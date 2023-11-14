@@ -65,9 +65,10 @@ class DataSource:
         # add way objects, and store
         for way_id, way in ways.items():
             if way_id not in self.ways:
-                w = Way(way_id, way, nodes)
-                self.ways[way_id] = w
-                self.way_container.insert(w)
+                w = Way.create(way_id, way, nodes, 100)
+                self.ways.update(w)
+                for id in w:
+                    self.way_container.insert(w[id])
 
         # update tile list
         self.loaded_tiles.append(tile)
