@@ -36,6 +36,7 @@ class DataSource:
         self.loaded_tiles = []
         self.tile_source = TileSource()
         self.tile_zoom = tile_zoom
+        self.chunk_size = 100
 
     def ensure_coverage(self, lat, lon, extend=0.0):
         tiles = self.tile_source.get_required_tiles(lat, lon, self.tile_zoom, extend=extend)
@@ -65,9 +66,10 @@ class DataSource:
         # add way objects, and store
         for way_id, way in ways.items():
             if way_id not in self.ways:
-                w = Way(way_id, way, nodes)
-                self.ways[way_id] = w
-                self.way_container.insert(w)
+                w = Way.create(way_id, way, nodes, self.chunk_size)
+                self.ways.update(w)
+                for id in w:
+                    self.way_container.insert(w[id])
 
         # update tile list
         self.loaded_tiles.append(tile)

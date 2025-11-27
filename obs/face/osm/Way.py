@@ -4,7 +4,7 @@ from obs.face.mapping import EquirectangularFast as LocalMap
 
 
 class Way:
-    def __init__(self, way_id, way, all_nodes):
+    def __init__(self, way_id, way, nodes_way):
         self.way_id = way_id
 
         if "tags" in way:
@@ -13,8 +13,6 @@ class Way:
             self.tags = {}
 
         # determine points
-        nodes_way = [all_nodes[i] for i in way["nodes"]]
-
         lat = np.array([n["lat"] for n in nodes_way])
         lon = np.array([n["lon"] for n in nodes_way])
         self.points_lat_lon = np.stack((lat, lon), axis=1)
@@ -35,9 +33,77 @@ class Way:
         # direction
         dx = np.diff(x)
         dy = np.diff(y)
+        self.seg_length = np.hypot(dx, dy)
         self.direction = np.arctan2(dy, dx)
 
         self.directionality_bicycle, self.directionality_motorized = self.get_way_directionality(way)
+
+    @staticmethod
+    def subid(way_id, nodes):
+        if len(nodes) == 0:
+            return way_id
+        return str(way_id)+'.'+str(len(nodes))
+
+    @staticmethod
+    def create(way_id, way, all_nodes, max_len):
+        ways = {}
+        # determine points
+        nodes = [all_nodes[i] for i in way["nodes"]]
+        lat = np.array([n["lat"] for n in nodes])
+        lon = np.array([n["lon"] for n in nodes])
+
+        # bounding box
+        a = (min(lat), min(lon))
+        b = (max(lat), max(lon))
+
+        # define the local map around the center of the bounding box
+        lat_0 = (a[0] + b[0]) * 0.5
+        lon_0 = (a[1] + b[1]) * 0.5
+        local_map = LocalMap(lat_0, lon_0)
+        x, y = local_map.transfer_to(lat, lon)
+        dx = np.diff(x)
+        dy = np.diff(y)
+        seg_length = np.hypot(dx, dy)
+        slen = 0
+        newnodes = [nodes[0]]
+        first = 0
+        # split long segments with intermediate nodes
+        for i in range(len(seg_length)):
+            n = math.floor((seg_length[i] - max_len / 2) / max_len)
+            if n > 0:
+                for s in range(n):
+                    f1 = (n - s) / (n + 1)
+                    f2 = (s + 1) / (n + 1)
+                    latx = lat[i] * f1 + lat[i+1] * f2
+                    lonx = lon[i] * f1 + lon[i+1] * f2
+                    if math.isnan(latx) or math.isnan(lonx):
+                        f1 = f2
+                    node_id = nodes[i]['id']+ (s+1) * 0x1000000
+                    node = {'type':'node', 'id':node_id, 'lat':latx, 'lon':lonx}
+                    all_nodes[node_id] = node
+                    newnodes.append(node)
+                    w_id = Way.subid(way_id, ways)
+                    ways[w_id] = Way(w_id, way, newnodes[first:])
+                    first = len(newnodes) - 1
+                    slen = 0
+                # add last segment
+                newnodes.append(nodes[i+1])
+                w_id = Way.subid(way_id, ways)
+                ways[w_id] = Way(w_id, way, newnodes[first:])
+                first = len(newnodes) - 1
+                slen = 0
+            else:
+                newnodes.append(nodes[i+1])
+                slen += seg_length[i]
+                if (slen > max_len and i != first):
+                    w_id = Way.subid(way_id, ways)
+                    ways[w_id] = Way(w_id, way, newnodes[first:])
+                    first = len(newnodes) - 1
+                    slen = 0
+        if slen > 0:
+            w_id = Way.subid(way_id, ways)
+            ways[w_id] = Way(w_id, way, newnodes[first:])
+        return ways
 
     def get_axis_aligned_bounding_box(self):
         return self.a, self.b
@@ -118,6 +184,8 @@ class Way:
                 # then move the point
                 c_i = c[i] + n_i * lateral_offset
                 c_i = self.local_map.transfer_from(c_i[0], c_i[1])
+                if math.isnan(c_i[0]) or math.isnan(c_i[1]):
+                    n_next = 0
                 coordinates.append([c_i[0], c_i[1]])
 
         return coordinates

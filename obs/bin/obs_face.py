@@ -356,6 +356,9 @@ def main():
 
     parser.add_argument('-v', '--verbose', action='store_true', help='be verbose')
 
+    parser.add_argument('-c', '--chunk', required=False, action='store', default=100, type=float,
+                        help='Chop segments on road page to max length in meter.')
+
     args = parser.parse_args()
 
     coloredlogs.install(level=logging.DEBUG if args.verbose else logging.INFO,
@@ -393,6 +396,8 @@ def main():
     if args.annotate or args.collect or args.visualization:
         logging.info('Loading OpenStreetMap data')
         map_source = OSMDataSource(cache_dir=args.path_cache)
+        if args.chunk is not None:
+            map_source.chunk_size = args.chunk
 
     if args.annotate or args.collect:
         if not args.input:
